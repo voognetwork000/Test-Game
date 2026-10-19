@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sky Hopper</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>.board { max-width: 360px; } canvas { cursor: pointer; }</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Sky Hopper</h1>
+  <div class="stats">
+    <div class="stat"><small>Score</small><b id="score">0</b></div>
+    <div class="stat"><small>Best</small><b id="best">0</b></div>
+  </div>
+</header>
+<main class="stage">
+  <div class="board">
+    <canvas id="c" width="360" height="540" aria-label="Sky Hopper"></canvas>
+    <div class="overlay" id="overlay" hidden>
+      <h2>Crashed!</h2>
+      <p id="ov-text"></p>
+      <button class="primary" id="again">Fly again</button>
+    </div>
+  </div>
+  <p class="hint">Tap the sky, click, or press Space to flap. Fly through the gaps in the pipes.</p>
+</main>
+<script src="shared.js"></script>
+<script>
+const W = 360, H = 540, GROUND = H - 50, GAP = 150, PW = 60, SPEED = 160, EVERY = 1.45;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d'), $ = id => document.getElementById(id);
+let bird, pipes, score, state, spawnT, t = 0, groundX = 0;
+
+function reset() {
+  bird = { x: 90, y: H / 2 - 40, vy: 0, r: 13 };
+  pipes = []; score = 0; state = 'ready'; spawnT = 0;
+  $('score').textContent = 0; $('overlay').hidden = true;
+}
+function flap() {
+  if (state === 'dead') return;
+  if (state === 'ready') state = 'play';
+  bird.vy = -430;
+}
+function die() {
+  if (state === 'dead') return;
+  state = 'dead';
+  const record = Best.save('sky-hopper', score); $('best').textContent = Best.get('sky-hopper');
+  $('ov-text').textContent = `You passed ${score} pipe${score === 1 ? '' : 's'}.${record && score ? ' New best!' : ''}`;
+  setTimeout(() => { $('overlay').hidden = false; }, 500);
+}
+function step(dt) {
+  t += dt;
+  if (state !== 'dead') groundX = (groundX - SPEED * dt) % 24;
+  if (state === 'ready') { bird.y = H / 2 - 40 + Math.sin(t * 4) * 8; return; }
+  bird.vy += 1500 * dt; bird.y += bird.vy * dt;
+  if (bird.y < bird.r) { bird.y = bird.r; bird.vy = 0; }
+  if (bird.y + bird.r >= GROUND) { bird.y = GROUND - bird.r; die(); }
+  if (state === 'dead') return;
+  spawnT -= dt;
+  if (spawnT <= 0) { spawnT = EVERY; pipes.push({ x: W + 10, top: 70 + Math.random() * (GROUND - GAP - 140), scored: false }); }
+  for (const p of pipes) {
+    p.x -= SPEED * dt;
+    if (!p.scored && p.x + PW < bird.x) { p.scored = true; score++; $('score').textContent = score; }
+    const inX = bird.x + bird.r - 3 > p.x && bird.x - bird.r + 3 < p.x + PW;
+    if (inX && (bird.y - bird.r + 3 < p.top || bird.y + bird.r - 3 > p.top + GAP)) die();
+  }
+  pipes = pipes.filter(p => p.x > -PW - 10);
+}
+function pipe(x, y, h, lipAtBottom) {
+  ctx.fillStyle = '#5bb04a'; ctx.fillRect(x, y, PW, h);
+  ctx.fillStyle = '#7cc46a'; ctx.fillRect(x + 6, y, 8, h);
+  ctx.fillStyle = '#4a9a3c'; ctx.fillRect(x - 4, lipAtBottom ? y + h - 22 : y, PW + 8, 22);
+}
+function draw() {
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, '#6cc3e8'); sky.addColorStop(1, '#bfe8f2');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(255,255,255,.85)';
+  for (const [cx, cy] of [[60, 90], [230, 150], [320, 60]]) {
+    const x = ((cx - t * 20) % (W + 80) + W + 80) % (W + 80) - 40;
+    ctx.beginPath(); ctx.arc(x, cy, 18, 0, 7); ctx.arc(x + 20, cy - 8, 22, 0, 7); ctx.arc(x + 42, cy, 16, 0, 7); ctx.fill();
+  }
+  for (const p of pipes) { pipe(p.x, 0, p.top, true); pipe(p.x, p.top + GAP, GROUND - p.top - GAP, false); }
+  ctx.fillStyle = '#c8a26b'; ctx.fillRect(0, GROUND, W, H - GROUND);
+  ctx.fillStyle = '#7cc46a'; ctx.fillRect(0, GROUND, W, 10);
+  ctx.fillStyle = '#b48d58';
+  for (let x = groundX; x < W; x += 24) ctx.fillRect(x, GROUND + 18, 12, 6);
+  ctx.save(); ctx.translate(bird.x, bird.y); ctx.rotate(Math.max(-.5, Math.min(1.2, bird.vy / 600)));
+  ctx.fillStyle = '#f2b544'; ctx.beginPath(); ctx.arc(0, 0, bird.r, 0, 7); ctx.fill();
+  ctx.fillStyle = '#e9a93a'; ctx.beginPath(); ctx.ellipse(-4, 3, 7, 4, -.3, 0, 7); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(5, -4, 4.5, 0, 7); ctx.fill();
+  ctx.fillStyle = '#1d1d1d'; ctx.beginPath(); ctx.arc(6.5, -4, 2, 0, 7); ctx.fill();
+  ctx.fillStyle = '#ef6f6c'; ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(19, 3); ctx.lineTo(10, 6); ctx.fill();
+  ctx.restore();
+  if (state === 'ready') {
+    ctx.fillStyle = '#10231f'; ctx.font = '24px "Lilita One", sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Tap to fly', W / 2, H / 2 + 50);
+  }
+}
+cv.addEventListener('pointerdown', e => { e.preventDefault(); flap(); });
+addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'ArrowUp') { e.preventDefault(); flap(); } });
+$('again').onclick = reset;
+$('best').textContent = Best.get('sky-hopper');
+reset();
+let last = performance.now();
+function frame(now) { step(Math.min(.03, (now - last) / 1000)); last = now; draw(); requestAnimationFrame(frame); }
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

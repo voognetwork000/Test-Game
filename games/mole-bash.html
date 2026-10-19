@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mole Bash</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+  .board { max-width: 420px; }
+  .field { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding: 18px; background: #3f7d4e; border: 2px solid var(--line); border-radius: 14px; touch-action: manipulation; }
+  .hole { position: relative; aspect-ratio: 1; padding: 0; border: 0; background: none; overflow: hidden; border-radius: 0 0 50% 50%; cursor: pointer; }
+  .hole::after { content: ""; position: absolute; left: 6%; right: 6%; bottom: 4%; height: 30%; border-radius: 50%; background: #2a1a10; box-shadow: inset 0 6px 0 #1a0f08; }
+  .mole { position: absolute; left: 18%; right: 18%; bottom: -85%; height: 76%; border-radius: 45% 45% 20% 20%; background: #8a5a3b; transition: bottom .12s ease-out; z-index: 1; }
+  .mole::before, .mole::after { content: ""; position: absolute; top: 26%; width: 12%; aspect-ratio: 1; border-radius: 50%; background: #1d1d1d; }
+  .mole::before { left: 28%; } .mole::after { right: 28%; }
+  .mole i { position: absolute; left: 38%; right: 38%; top: 42%; aspect-ratio: 1.4; border-radius: 50%; background: #e98a8a; }
+  .hole.up .mole { bottom: 10%; }
+  .hole.gold .mole { background: #f2b544; }
+  .hole.hit .mole { background: #c47a5a; transform: scaleY(.85); }
+  .hole.gold.hit .mole { background: #ffd27a; }
+  @media (prefers-reduced-motion: reduce) { .mole { transition: none; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Mole Bash</h1>
+  <div class="stats">
+    <div class="stat"><small>Score</small><b id="score">0</b></div>
+    <div class="stat"><small>Time</small><b id="time">30</b></div>
+    <div class="stat"><small>Best</small><b id="best">0</b></div>
+  </div>
+</header>
+<main class="stage">
+  <div class="board">
+    <div class="field" id="field" aria-label="Mole holes"></div>
+    <div class="overlay" id="overlay">
+      <h2 id="ov-title">Mole Bash</h2>
+      <p id="ov-text">Bop as many moles as you can in 30 seconds. Golden moles are worth 3 points!</p>
+      <button class="primary" id="go">Start</button>
+    </div>
+  </div>
+</main>
+<script src="shared.js"></script>
+<script>
+const ROUND = 30, $ = id => document.getElementById(id);
+const holes = [];
+let score, endAt, playing = false, timers = [];
+
+for (let i = 0; i < 9; i++) {
+  const h = document.createElement('button');
+  h.className = 'hole'; h.setAttribute('aria-label', 'Hole ' + (i + 1));
+  h.innerHTML = '<div class="mole"><i></i></div>';
+  h.onpointerdown = () => bop(h);
+  $('field').append(h); holes.push(h);
+}
+
+function bop(h) {
+  if (!playing || !h.classList.contains('up') || h.classList.contains('hit')) return;
+  h.classList.add('hit');
+  score += h.classList.contains('gold') ? 3 : 1;
+  $('score').textContent = score;
+  timers.push(setTimeout(() => h.classList.remove('up', 'gold', 'hit'), 180));
+}
+
+function popUp() {
+  if (!playing) return;
+  const left = (endAt - Date.now()) / 1000, progress = 1 - left / ROUND;
+  const free = holes.filter(h => !h.classList.contains('up'));
+  if (free.length) {
+    const h = free[Math.floor(Math.random() * free.length)];
+    h.classList.add('up');
+    if (Math.random() < .1) h.classList.add('gold');
+    timers.push(setTimeout(() => h.classList.remove('up', 'gold', 'hit'), 1100 - progress * 550));
+  }
+  timers.push(setTimeout(popUp, 800 - progress * 420));
+}
+
+function tick() {
+  if (!playing) return;
+  const left = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
+  $('time').textContent = left;
+  if (!left) return finish();
+  timers.push(setTimeout(tick, 200));
+}
+
+function start() {
+  timers.forEach(clearTimeout); timers = [];
+  holes.forEach(h => h.classList.remove('up', 'gold', 'hit'));
+  score = 0; $('score').textContent = 0; endAt = Date.now() + ROUND * 1000; playing = true;
+  $('overlay').hidden = true;
+  popUp(); tick();
+}
+
+function finish() {
+  playing = false;
+  timers.forEach(clearTimeout); timers = [];
+  holes.forEach(h => h.classList.remove('up', 'gold', 'hit'));
+  const record = Best.save('mole-bash', score); $('best').textContent = Best.get('mole-bash');
+  $('ov-title').textContent = "Time's up!";
+  $('ov-text').textContent = `You scored ${score}.${record && score ? ' New best!' : ''}`;
+  $('go').textContent = 'Play again';
+  $('overlay').hidden = false;
+}
+
+$('go').onclick = start;
+$('best').textContent = Best.get('mole-bash');
+</script>
+</body>
+</html>

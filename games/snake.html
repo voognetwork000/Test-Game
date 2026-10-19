@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Snake</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+  .board { max-width: 440px; }
+  .pad { display: grid; grid-template-columns: repeat(3, 56px); gap: 6px; }
+  .pad button { height: 48px; padding: 0; font-size: 20px; }
+  .pad .up { grid-column: 2; } .pad .left { grid-column: 1; grid-row: 2; } .pad .down { grid-column: 2; grid-row: 2; } .pad .right { grid-column: 3; grid-row: 2; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Snake</h1>
+  <div class="stats">
+    <div class="stat"><small>Score</small><b id="score">0</b></div>
+    <div class="stat"><small>Best</small><b id="best">0</b></div>
+  </div>
+</header>
+<main class="stage">
+  <div class="board">
+    <canvas id="c" width="400" height="400" aria-label="Snake board"></canvas>
+    <div class="overlay" id="overlay">
+      <h2 id="ov-title">Snake</h2>
+      <p id="ov-text">Eat the apples and don't bite yourself. Use the arrow keys, or swipe on the board.</p>
+      <button class="primary" id="go">Play</button>
+    </div>
+  </div>
+  <div class="pad" aria-label="Direction buttons">
+    <button class="up" data-d="up" aria-label="Up">▲</button>
+    <button class="left" data-d="left" aria-label="Left">◀</button>
+    <button class="down" data-d="down" aria-label="Down">▼</button>
+    <button class="right" data-d="right" aria-label="Right">▶</button>
+  </div>
+</main>
+<script src="shared.js"></script>
+<script>
+const N = 20, C = 20;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+const VEC = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+let snake, dir, queue, food, score, playing, stepMs, acc;
+
+function reset() {
+  snake = [{ x: 9, y: 10 }, { x: 8, y: 10 }, { x: 7, y: 10 }];
+  dir = { x: 1, y: 0 }; queue = []; score = 0; stepMs = 130; acc = 0;
+  food = place(); playing = true;
+  $('overlay').hidden = true; $('score').textContent = 0;
+}
+function place() {
+  let p;
+  do p = { x: Math.floor(Math.random() * N), y: Math.floor(Math.random() * N) };
+  while (snake.some(s => s.x === p.x && s.y === p.y));
+  return p;
+}
+function turn(d) {
+  if (!playing) return;
+  const [x, y] = VEC[d], last = queue.at(-1) || dir;
+  if (x === -last.x && y === -last.y) return; // no reversing into yourself
+  if (queue.length < 3) queue.push({ x, y });
+}
+function tick() {
+  if (queue.length) dir = queue.shift();
+  const h = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+  const eats = h.x === food.x && h.y === food.y;
+  const body = eats ? snake : snake.slice(0, -1);
+  if (h.x < 0 || h.y < 0 || h.x >= N || h.y >= N || body.some(s => s.x === h.x && s.y === h.y)) return end();
+  snake.unshift(h);
+  if (!eats) snake.pop();
+  else {
+    score++; $('score').textContent = score; stepMs = Math.max(65, stepMs - 2.5);
+    if (snake.length === N * N) return end();
+    food = place();
+  }
+}
+function end() {
+  playing = false;
+  const record = Best.save('snake', score);
+  $('best').textContent = Best.get('snake');
+  $('ov-title').textContent = 'Game over';
+  $('ov-text').textContent = `You ate ${score} apple${score === 1 ? '' : 's'}.${record && score ? ' New best!' : ''}`;
+  $('go').textContent = 'Play again';
+  $('overlay').hidden = false;
+}
+function draw() {
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    ctx.fillStyle = (x + y) % 2 ? '#1d4a3a' : '#21503f'; ctx.fillRect(x * C, y * C, C, C);
+  }
+  ctx.fillStyle = '#ef6f6c'; ctx.beginPath(); ctx.arc(food.x * C + C / 2, food.y * C + C / 2, C / 2 - 2, 0, 7); ctx.fill();
+  ctx.fillStyle = '#7cc46a'; ctx.fillRect(food.x * C + C / 2, food.y * C + 1, 3, 5);
+  snake.forEach((s, i) => {
+    ctx.fillStyle = i ? (i % 2 ? '#f2b544' : '#e9a93a') : '#ffd27a';
+    ctx.beginPath(); ctx.roundRect(s.x * C + 1, s.y * C + 1, C - 2, C - 2, 6); ctx.fill();
+  });
+  const h = snake[0]; ctx.fillStyle = '#1d1d1d';
+  ctx.beginPath(); ctx.arc(h.x * C + C / 2 + dir.x * 4 - dir.y * 4, h.y * C + C / 2 + dir.y * 4 - dir.x * 4, 2.2, 0, 7);
+  ctx.arc(h.x * C + C / 2 + dir.x * 4 + dir.y * 4, h.y * C + C / 2 + dir.y * 4 + dir.x * 4, 2.2, 0, 7); ctx.fill();
+}
+let last = performance.now();
+function frame(now) {
+  if (playing) { acc += now - last; while (acc >= stepMs && playing) { acc -= stepMs; tick(); } }
+  last = now; draw(); requestAnimationFrame(frame);
+}
+onDirection(cv, turn);
+document.querySelectorAll('.pad button').forEach(b => b.onclick = () => turn(b.dataset.d));
+$('go').onclick = reset;
+$('best').textContent = Best.get('snake');
+snake = [{ x: 9, y: 10 }, { x: 8, y: 10 }, { x: 7, y: 10 }]; dir = { x: 1, y: 0 }; food = { x: 14, y: 10 };
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

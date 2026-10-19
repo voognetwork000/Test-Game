@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tic-Tac-Toe</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+  .grid { width: min(100%, 360px); display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .grid button { aspect-ratio: 1; font-family: var(--display); font-weight: 400; font-size: clamp(44px, 16vw, 72px); padding: 0; background: var(--panel); }
+  .grid button.x { color: var(--gold); } .grid button.o { color: #7fd1e8; }
+  .grid button.win { background: #2f5d52; border-color: var(--gold); }
+  .msg { font-family: var(--display); font-size: 24px; min-height: 30px; margin: 0; text-align: center; }
+  .on { border-color: var(--gold) !important; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Tic-Tac-Toe</h1>
+  <div class="stats">
+    <div class="stat"><small>You</small><b id="sx">0</b></div>
+    <div class="stat"><small>Draws</small><b id="sd">0</b></div>
+    <div class="stat"><small>Computer</small><b id="so">0</b></div>
+  </div>
+</header>
+<main class="stage">
+  <div class="row"><button data-mode="easy">Easy</button><button data-mode="hard">Hard (unbeatable)</button></div>
+  <p class="msg" id="msg">Your turn. You are X.</p>
+  <div class="grid" id="grid" aria-label="Board"></div>
+  <button class="primary" id="next" hidden>Next round</button>
+  <p class="hint">Get three in a row before the computer does. You take turns going first.</p>
+</main>
+<script src="shared.js"></script>
+<script>
+const LINES = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
+const $ = id => document.getElementById(id);
+let board, over, mode = 'easy', youFirst = true, tally = { X: 0, O: 0, draw: 0 };
+
+function result(b) {
+  for (const l of LINES) if (b[l[0]] && b[l[0]] === b[l[1]] && b[l[0]] === b[l[2]]) return { p: b[l[0]], line: l };
+  return b.every(Boolean) ? { p: 'draw' } : null;
+}
+// Scores each move for O; quicker wins score higher.
+function minimax(b, turn, depth) {
+  const r = result(b);
+  if (r) return { score: r.p === 'O' ? 10 - depth : r.p === 'X' ? depth - 10 : 0 };
+  let best = { score: turn === 'O' ? -Infinity : Infinity };
+  for (let i = 0; i < 9; i++) {
+    if (b[i]) continue;
+    b[i] = turn;
+    const s = minimax(b, turn === 'O' ? 'X' : 'O', depth + 1).score;
+    b[i] = null;
+    if (turn === 'O' ? s > best.score : s < best.score) best = { score: s, i };
+  }
+  return best;
+}
+console.assert(minimax(['X', 'X', null, null, 'O', null, null, null, null], 'O', 0).i === 2, 'computer blocks a win');
+
+function render() {
+  const r = result(board);
+  $('grid').innerHTML = board.map((v, i) =>
+    `<button data-i="${i}" class="${v ? v.toLowerCase() : ''}${r?.line?.includes(i) ? ' win' : ''}" aria-label="Square ${i + 1}${v ? ', ' + v : ''}" ${v || over ? 'disabled style="opacity:1"' : ''}>${v || ''}</button>`).join('');
+  document.querySelectorAll('#grid button').forEach(b => b.onclick = () => play(+b.dataset.i));
+  $('sx').textContent = tally.X; $('so').textContent = tally.O; $('sd').textContent = tally.draw;
+}
+function check() {
+  const r = result(board);
+  if (!r) return false;
+  over = true; tally[r.p]++;
+  if (r.p === 'X') Best.save('tic-tac-toe', Best.get('tic-tac-toe') + 1);
+  $('msg').textContent = r.p === 'X' ? 'You win!' : r.p === 'O' ? 'The computer wins.' : "It's a draw.";
+  $('next').hidden = false;
+  return true;
+}
+function cpu() {
+  const empty = board.map((v, i) => v ? -1 : i).filter(i => i >= 0);
+  const smart = mode === 'hard' || Math.random() < .45;
+  board[smart ? minimax(board, 'O', 0).i : empty[Math.floor(Math.random() * empty.length)]] = 'O';
+  if (!check()) $('msg').textContent = 'Your turn.';
+  render();
+}
+function play(i) {
+  if (over || board[i]) return;
+  board[i] = 'X';
+  if (!check()) { $('msg').textContent = 'Computer is thinking…'; over = true; render(); setTimeout(() => { over = false; cpu(); }, 350); return; }
+  render();
+}
+function round() {
+  board = Array(9).fill(null); over = false; $('next').hidden = true;
+  $('msg').textContent = youFirst ? 'Your turn. You are X.' : 'Computer goes first.';
+  render();
+  if (!youFirst) { over = true; setTimeout(() => { over = false; cpu(); }, 400); }
+  youFirst = !youFirst;
+}
+document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => {
+  mode = b.dataset.mode;
+  document.querySelectorAll('[data-mode]').forEach(x => x.classList.toggle('on', x === b));
+});
+document.querySelector('[data-mode="easy"]').classList.add('on');
+$('next').onclick = round;
+round();
+</script>
+</body>
+</html>

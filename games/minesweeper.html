@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Minesweeper</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+  .board { max-width: 480px; }
+  .grid { display: grid; gap: 3px; padding: 8px; background: var(--panel); border: 2px solid var(--line); border-radius: 12px; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+  .grid button { aspect-ratio: 1; padding: 0; border: 0; border-radius: 4px; background: #3d7a55; font-family: var(--display); font-weight: 400; font-size: clamp(12px, 3.6vw, 20px); min-width: 0; }
+  .grid button:hover:not(.open) { background: #4a8a62; }
+  .grid button.open { background: #c9b48e; cursor: default; }
+  .grid button.boom { background: var(--danger); }
+  .n1 { color: #1f5fbf; } .n2 { color: #2c7a2c; } .n3 { color: #c0392b; } .n4 { color: #4b2c91; } .n5 { color: #8a3b12; } .n6 { color: #12808a; } .n7 { color: #222; } .n8 { color: #555; }
+  .on { border-color: var(--gold) !important; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Minesweeper</h1>
+  <div class="stats">
+    <div class="stat"><small>Mines left</small><b id="left">10</b></div>
+    <div class="stat"><small>Time</small><b id="time">0</b></div>
+  </div>
+</header>
+<main class="stage">
+  <div class="row" id="levels">
+    <button data-lv="easy">Easy</button><button data-lv="medium">Medium</button><button data-lv="hard">Hard</button>
+    <button id="flagmode" aria-pressed="false">Flag mode: off</button>
+  </div>
+  <div class="board">
+    <div class="grid" id="grid" aria-label="Minefield"></div>
+    <div class="overlay" id="overlay" hidden>
+      <h2 id="ov-title"></h2>
+      <p id="ov-text"></p>
+      <button class="primary" id="again">Play again</button>
+    </div>
+  </div>
+  <p class="hint">Tap a square to dig. Numbers tell you how many mines touch that square. Right-click, long-press or use Flag mode to mark a mine. Tap a number whose mines are all flagged to dig around it.</p>
+</main>
+<script src="shared.js"></script>
+<script>
+const LEVELS = { easy: { n: 9, m: 10 }, medium: { n: 12, m: 24 }, hard: { n: 16, m: 40 } };
+const $ = id => document.getElementById(id), grid = $('grid');
+let lv = 'easy', N, M, mines, open, flags, started, over, t0, timer, flagMode = false, btns;
+
+function nb(i) {
+  const x = i % N, y = Math.floor(i / N), out = [];
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const nx = x + dx, ny = y + dy;
+    if ((dx || dy) && nx >= 0 && ny >= 0 && nx < N && ny < N) out.push(ny * N + nx);
+  }
+  return out;
+}
+const count = i => nb(i).filter(j => mines.has(j)).length;
+
+function reset() {
+  ({ n: N, m: M } = LEVELS[lv]);
+  mines = new Set(); open = new Set(); flags = new Set(); started = false; over = false;
+  clearInterval(timer); $('time').textContent = 0; $('overlay').hidden = true;
+  grid.style.gridTemplateColumns = `repeat(${N}, 1fr)`;
+  grid.innerHTML = '';
+  btns = [];
+  for (let i = 0; i < N * N; i++) {
+    const b = document.createElement('button');
+    b.setAttribute('aria-label', `Square ${i % N + 1}, ${Math.floor(i / N) + 1}`);
+    let pressT, longPressed = false;
+    b.onpointerdown = e => { if (e.pointerType !== 'mouse') { longPressed = false; pressT = setTimeout(() => { longPressed = true; toggleFlag(i); }, 420); } };
+    b.onpointerup = b.onpointerleave = () => clearTimeout(pressT);
+    b.onclick = () => { if (longPressed) { longPressed = false; return; } flagMode && !open.has(i) ? toggleFlag(i) : dig(i); };
+    b.oncontextmenu = e => { e.preventDefault(); toggleFlag(i); };
+    grid.append(b); btns.push(b);
+  }
+  document.querySelectorAll('[data-lv]').forEach(b => b.classList.toggle('on', b.dataset.lv === lv));
+  render();
+}
+
+function begin(i) {
+  // First dig is always safe: no mines on or around it.
+  const safe = new Set([i, ...nb(i)]);
+  while (mines.size < M) { const r = Math.floor(Math.random() * N * N); if (!safe.has(r)) mines.add(r); }
+  started = true; t0 = Date.now();
+  timer = setInterval(() => { $('time').textContent = Math.floor((Date.now() - t0) / 1000); }, 250);
+}
+
+function dig(i) {
+  if (over || flags.has(i)) return;
+  if (open.has(i)) { // chord: number with all its mines flagged digs the rest
+    const around = nb(i);
+    if (count(i) && around.filter(j => flags.has(j)).length === count(i)) around.forEach(j => { if (!open.has(j) && !flags.has(j)) dig(j); });
+    return;
+  }
+  if (!started) begin(i);
+  if (mines.has(i)) return finish(false, i);
+  const stack = [i];
+  while (stack.length) {
+    const j = stack.pop();
+    if (open.has(j) || flags.has(j)) continue;
+    open.add(j);
+    if (!count(j)) stack.push(...nb(j));
+  }
+  render();
+  if (open.size === N * N - M) finish(true);
+}
+
+function toggleFlag(i) {
+  if (over || open.has(i)) return;
+  flags.has(i) ? flags.delete(i) : flags.add(i);
+  render();
+}
+
+function finish(won, hit) {
+  if (over) return;
+  over = true; clearInterval(timer);
+  const secs = Math.max(1, Math.round((Date.now() - t0) / 1000));
+  if (!won) mines.forEach(m => open.add(m));
+  render();
+  if (hit !== undefined) btns[hit].classList.add('boom');
+  let note = '';
+  if (won && Best.save('minesweeper-' + lv, secs, true)) note = ' New best time!';
+  $('ov-title').textContent = won ? 'Field cleared!' : 'Boom!';
+  $('ov-text').textContent = won ? `You cleared ${lv} in ${secs} seconds.${note}` : 'You dug up a mine.';
+  setTimeout(() => { $('overlay').hidden = false; }, won ? 200 : 900);
+}
+
+function render() {
+  btns.forEach((b, i) => {
+    const isOpen = open.has(i);
+    b.className = isOpen ? 'open' : '';
+    if (isOpen && mines.has(i)) b.textContent = '✹';
+    else if (isOpen) { const c = count(i); b.textContent = c || ''; if (c) b.classList.add('n' + c); }
+    else b.textContent = flags.has(i) ? '⚑' : '';
+  });
+  $('left').textContent = M - flags.size;
+}
+
+document.querySelectorAll('[data-lv]').forEach(b => b.onclick = () => { lv = b.dataset.lv; reset(); });
+$('flagmode').onclick = () => {
+  flagMode = !flagMode;
+  $('flagmode').textContent = 'Flag mode: ' + (flagMode ? 'on' : 'off');
+  $('flagmode').setAttribute('aria-pressed', flagMode);
+  $('flagmode').classList.toggle('on', flagMode);
+};
+$('again').onclick = reset;
+reset();
+</script>
+</body>
+</html>

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Echo</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+  .pads { width: min(100%, 360px); aspect-ratio: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; background: var(--panel); border: 2px solid var(--line); border-radius: 50%; touch-action: manipulation; }
+  .pad { border: 0; padding: 0; opacity: .45; transition: opacity .08s, transform .08s; }
+  .pad:nth-child(1) { background: #7cc46a; border-radius: 100% 8px 8px 8px; }
+  .pad:nth-child(2) { background: #ef6f6c; border-radius: 8px 100% 8px 8px; }
+  .pad:nth-child(3) { background: #f2b544; border-radius: 8px 8px 8px 100%; }
+  .pad:nth-child(4) { background: #5aa9e6; border-radius: 8px 8px 100% 8px; }
+  .pad.lit { opacity: 1; transform: scale(.97); }
+  .pad:disabled { cursor: default; }
+  .msg { font-family: var(--display); font-size: 24px; min-height: 30px; margin: 0; text-align: center; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Echo</h1>
+  <div class="stats">
+    <div class="stat"><small>Round</small><b id="round">0</b></div>
+    <div class="stat"><small>Best</small><b id="best">0</b></div>
+  </div>
+</header>
+<main class="stage">
+  <p class="msg" id="msg">Watch, listen, repeat.</p>
+  <div class="pads" id="pads">
+    <button class="pad" aria-label="Green" disabled></button>
+    <button class="pad" aria-label="Red" disabled></button>
+    <button class="pad" aria-label="Yellow" disabled></button>
+    <button class="pad" aria-label="Blue" disabled></button>
+  </div>
+  <button class="primary" id="go">Start</button>
+  <p class="hint">The pads light up in a pattern. Tap them back in the same order. Each round adds one more step.</p>
+</main>
+<script src="shared.js"></script>
+<script>
+const NOTES = [329.6, 261.6, 220, 164.8], $ = id => document.getElementById(id);
+const pads = [...document.querySelectorAll('.pad')];
+let audio, seq = [], pos = 0, listening = false;
+
+function tone(i, ms) {
+  if (!audio) return;
+  const o = audio.createOscillator(), g = audio.createGain();
+  o.type = 'triangle'; o.frequency.value = NOTES[i];
+  g.gain.setValueAtTime(.25, audio.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001, audio.currentTime + ms / 1000);
+  o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + ms / 1000);
+}
+function light(i, ms) {
+  pads[i].classList.add('lit'); tone(i, ms);
+  setTimeout(() => pads[i].classList.remove('lit'), ms);
+}
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+async function playSeq() {
+  listening = false; pads.forEach(p => p.disabled = true);
+  $('msg').textContent = 'Watch…';
+  const ms = Math.max(220, 520 - seq.length * 18);
+  await wait(500);
+  for (const i of seq) { light(i, ms); await wait(ms + 120); }
+  pos = 0; listening = true; pads.forEach(p => p.disabled = false);
+  $('msg').textContent = 'Your turn!';
+}
+function nextRound() {
+  seq.push(Math.floor(Math.random() * 4));
+  $('round').textContent = seq.length;
+  playSeq();
+}
+function press(i) {
+  if (!listening) return;
+  light(i, 220);
+  if (i !== seq[pos]) {
+    listening = false; pads.forEach(p => p.disabled = true);
+    const done = seq.length - 1, record = Best.save('echo', done);
+    $('best').textContent = Best.get('echo');
+    $('msg').textContent = `Wrong pad! You repeated ${done} step${done === 1 ? '' : 's'}.${record && done ? ' New best!' : ''}`;
+    $('go').hidden = false; $('go').textContent = 'Play again';
+    return;
+  }
+  if (++pos === seq.length) { listening = false; $('msg').textContent = 'Nice!'; setTimeout(nextRound, 600); }
+}
+pads.forEach((p, i) => p.onpointerdown = e => { e.preventDefault(); press(i); });
+$('go').onclick = () => {
+  try { audio = audio || new AudioContext(); } catch {}
+  seq = []; $('go').hidden = true; nextRound();
+};
+$('best').textContent = Best.get('echo');
+</script>
+</body>
+</html>

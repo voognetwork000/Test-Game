@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Brick Breaker</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Brick Breaker</h1>
+  <div class="stats">
+    <div class="stat"><small>Score</small><b id="score">0</b></div>
+    <div class="stat"><small>Lives</small><b id="lives">3</b></div>
+    <div class="stat"><small>Level</small><b id="level">1</b></div>
+  </div>
+</header>
+<main class="stage">
+  <div class="board">
+    <canvas id="c" width="480" height="400" aria-label="Brick Breaker board"></canvas>
+    <div class="overlay" id="overlay">
+      <h2 id="ov-title">Brick Breaker</h2>
+      <p id="ov-text">Move the paddle with your mouse, finger or arrow keys. Break every brick!</p>
+      <button class="primary" id="go">Play</button>
+    </div>
+  </div>
+  <p class="hint">Tap or press Space to launch the ball. Best score: <b id="best">0</b></p>
+</main>
+<script src="shared.js"></script>
+<script>
+const W = 480, H = 400, COLS = 8, ROWS = 5, BW = 54, BH = 18, GAP = 4, TOP = 50, LEFT = (W - COLS * (BW + GAP) + GAP) / 2;
+const ROW_COLORS = ['#ef6f6c', '#f4a261', '#f2b544', '#7cc46a', '#7fd1e8'];
+const cv = document.getElementById('c'), ctx = cv.getContext('2d'), $ = id => document.getElementById(id);
+let paddle, ball, bricks, score, lives, level, playing, keys = {};
+
+function buildLevel() {
+  bricks = [];
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++)
+    bricks.push({ x: LEFT + c * (BW + GAP), y: TOP + r * (BH + GAP), color: ROW_COLORS[r], hits: level > 2 && r === 0 ? 2 : 1, points: (ROWS - r) * 10 });
+  stick();
+}
+function stick() { ball = { x: paddle.x, y: H - 40, vx: 0, vy: 0, r: 7, stuck: true }; }
+function launch() {
+  if (!playing || !ball.stuck) return;
+  const speed = 300 + level * 30;
+  ball.stuck = false; ball.vx = speed * (Math.random() < .5 ? -.5 : .5); ball.vy = -speed * .87;
+}
+function reset() {
+  paddle = { x: W / 2, w: 84 }; score = 0; lives = 3; level = 1; playing = true;
+  buildLevel(); $('overlay').hidden = true; hud();
+}
+function hud() { $('score').textContent = score; $('lives').textContent = lives; $('level').textContent = level; }
+function end(title) {
+  playing = false;
+  Best.save('breakout', score); $('best').textContent = Best.get('breakout');
+  $('ov-title').textContent = title; $('ov-text').textContent = `Score: ${score}`;
+  $('go').textContent = 'Play again'; $('overlay').hidden = false;
+}
+
+function step(dt) {
+  if (keys.ArrowLeft) paddle.x -= 420 * dt;
+  if (keys.ArrowRight) paddle.x += 420 * dt;
+  paddle.x = Math.max(paddle.w / 2, Math.min(W - paddle.w / 2, paddle.x));
+  if (ball.stuck) { ball.x = paddle.x; return; }
+
+  ball.x += ball.vx * dt; ball.y += ball.vy * dt;
+  if (ball.x < ball.r) { ball.x = ball.r; ball.vx = Math.abs(ball.vx); }
+  if (ball.x > W - ball.r) { ball.x = W - ball.r; ball.vx = -Math.abs(ball.vx); }
+  if (ball.y < ball.r) { ball.y = ball.r; ball.vy = Math.abs(ball.vy); }
+
+  // Paddle: bounce angle depends on where the ball lands.
+  const py = H - 24;
+  if (ball.vy > 0 && ball.y + ball.r >= py && ball.y < py + 12 && Math.abs(ball.x - paddle.x) <= paddle.w / 2 + ball.r) {
+    const speed = Math.hypot(ball.vx, ball.vy), hit = (ball.x - paddle.x) / (paddle.w / 2), a = hit * 1.05;
+    ball.vx = speed * Math.sin(a); ball.vy = -speed * Math.cos(a); ball.y = py - ball.r;
+  }
+  if (ball.y > H + 20) {
+    lives--; hud();
+    if (!lives) return end('Out of balls');
+    stick();
+  }
+
+  for (const b of bricks) {
+    if (b.hits <= 0) continue;
+    const nx = Math.max(b.x, Math.min(ball.x, b.x + BW)), ny = Math.max(b.y, Math.min(ball.y, b.y + BH));
+    if (Math.hypot(ball.x - nx, ball.y - ny) > ball.r) continue;
+    // Bounce off the side we hit: whichever overlap is smaller.
+    const ox = Math.min(ball.x + ball.r - b.x, b.x + BW - (ball.x - ball.r)), oy = Math.min(ball.y + ball.r - b.y, b.y + BH - (ball.y - ball.r));
+    if (ox < oy) ball.vx = ball.x < b.x + BW / 2 ? -Math.abs(ball.vx) : Math.abs(ball.vx);
+    else ball.vy = ball.y < b.y + BH / 2 ? -Math.abs(ball.vy) : Math.abs(ball.vy);
+    if (--b.hits === 0) score += b.points;
+    hud();
+    break;
+  }
+  if (bricks.every(b => b.hits <= 0)) { level++; score += 100; hud(); buildLevel(); }
+}
+
+function draw() {
+  ctx.fillStyle = '#132b26'; ctx.fillRect(0, 0, W, H);
+  for (const b of bricks) {
+    if (b.hits <= 0) continue;
+    ctx.fillStyle = b.color; ctx.beginPath(); ctx.roundRect(b.x, b.y, BW, BH, 4); ctx.fill();
+    if (b.hits > 1) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); }
+  }
+  ctx.fillStyle = '#eef3e6'; ctx.beginPath(); ctx.roundRect(paddle.x - paddle.w / 2, H - 24, paddle.w, 12, 6); ctx.fill();
+  ctx.fillStyle = '#f2b544'; ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, 7); ctx.fill();
+}
+
+const toX = e => { const r = cv.getBoundingClientRect(); return (e.clientX - r.left) / r.width * W; };
+cv.addEventListener('pointermove', e => { if (paddle) paddle.x = toX(e); });
+cv.addEventListener('pointerdown', e => { paddle.x = toX(e); launch(); });
+addEventListener('keydown', e => { keys[e.key] = true; if (e.key === ' ') { e.preventDefault(); launch(); } if (e.key.startsWith('Arrow')) e.preventDefault(); });
+addEventListener('keyup', e => { keys[e.key] = false; });
+$('go').onclick = reset;
+$('best').textContent = Best.get('breakout');
+
+paddle = { x: W / 2, w: 84 }; level = 1; buildLevel();
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(.03, (now - last) / 1000); last = now;
+  if (playing) { step(dt / 2); if (playing) step(dt / 2); }
+  draw(); requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

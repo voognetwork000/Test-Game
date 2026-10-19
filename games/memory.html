@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Memory Match</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+  .board { max-width: 440px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .card { aspect-ratio: 3 / 4; padding: 0; border: 0; background: none; perspective: 600px; }
+  .inner { position: relative; width: 100%; height: 100%; transition: transform .35s; transform-style: preserve-3d; }
+  .card.up .inner { transform: rotateY(180deg); }
+  .face { position: absolute; inset: 0; border-radius: 10px; backface-visibility: hidden; display: flex; align-items: center; justify-content: center; }
+  .cover { background: repeating-linear-gradient(45deg, #2a5a4e 0 8px, #24504a 8px 16px); border: 2px solid var(--line); }
+  .front { background: #f4ecd8; transform: rotateY(180deg); font-size: clamp(30px, 10vw, 48px); }
+  .card.done .front { box-shadow: 0 0 0 3px var(--gold) inset; }
+  @media (prefers-reduced-motion: reduce) { .inner { transition: none; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Memory Match</h1>
+  <div class="stats">
+    <div class="stat"><small>Moves</small><b id="moves">0</b></div>
+    <div class="stat"><small>Best</small><b id="best">–</b></div>
+  </div>
+</header>
+<main class="stage">
+  <div class="board">
+    <div class="grid" id="grid" aria-label="Cards"></div>
+    <div class="overlay" id="overlay" hidden>
+      <h2>All matched!</h2>
+      <p id="ov-text"></p>
+      <button class="primary" id="again">Play again</button>
+    </div>
+  </div>
+  <p class="hint">Flip two cards at a time. Find all 8 matching pairs in as few moves as you can.</p>
+  <button id="restart">Shuffle</button>
+</main>
+<script src="shared.js"></script>
+<script>
+const SYMBOLS = [['★', '#e0a100'], ['●', '#e76f51'], ['▲', '#2a9d8f'], ['■', '#5b6fd6'], ['♦', '#d6336c'], ['♥', '#c0392b'], ['♣', '#2c7a2c'], ['♠', '#333']];
+const $ = id => document.getElementById(id);
+let deck, flipped, matched, moves, lock;
+
+function showBest() { $('best').textContent = Best.get('memory') || '–'; }
+function reset() {
+  deck = [...SYMBOLS, ...SYMBOLS].map(([s, c]) => ({ s, c }));
+  for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
+  flipped = []; matched = 0; moves = 0; lock = false;
+  $('moves').textContent = 0; $('overlay').hidden = true;
+  $('grid').innerHTML = deck.map((d, i) =>
+    `<button class="card" data-i="${i}" aria-label="Card ${i + 1}"><div class="inner"><div class="face cover"></div><div class="face front" style="color:${d.c}">${d.s}</div></div></button>`).join('');
+  document.querySelectorAll('.card').forEach(b => b.onclick = () => flip(+b.dataset.i, b));
+}
+function flip(i, el) {
+  if (lock || el.classList.contains('up')) return;
+  el.classList.add('up'); flipped.push({ i, el });
+  if (flipped.length < 2) return;
+  moves++; $('moves').textContent = moves;
+  const [a, b] = flipped; flipped = [];
+  if (deck[a.i].s === deck[b.i].s) {
+    a.el.classList.add('done'); b.el.classList.add('done');
+    if (++matched === SYMBOLS.length) {
+      const record = Best.save('memory', moves, true); showBest();
+      $('ov-text').textContent = `You found every pair in ${moves} moves.${record ? ' New best!' : ''}`;
+      setTimeout(() => { $('overlay').hidden = false; }, 500);
+    }
+  } else {
+    lock = true;
+    setTimeout(() => { a.el.classList.remove('up'); b.el.classList.remove('up'); lock = false; }, 750);
+  }
+}
+$('again').onclick = $('restart').onclick = reset;
+showBest(); reset();
+</script>
+</body>
+</html>
