@@ -8,6 +8,8 @@ const Best = {
     try { localStorage.setItem('best:' + id, value); } catch {}
     return true;
   },
+  // For games that count wins instead of a score.
+  addWin(id) { try { localStorage.setItem('best:' + id, Best.get(id) + 1); } catch {} },
 };
 
 // Calls fn('up' | 'down' | 'left' | 'right') on arrow keys, WASD and swipes over el.

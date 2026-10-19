@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gem Swap</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>.board { max-width: 448px; } canvas { cursor: pointer; }</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Gem Swap</h1>
+  <div class="stats">
+    <div class="stat"><small>Score</small><b id="score">0</b></div>
+    <div class="stat"><small>Moves left</small><b id="moves">30</b></div>
+    <div class="stat"><small>Best</small><b id="best">0</b></div>
+  </div>
+</header>
+<main class="stage">
+  <div class="board">
+    <canvas id="c" width="448" height="448" aria-label="Gem board"></canvas>
+    <div class="overlay" id="overlay" hidden>
+      <h2>Out of moves</h2>
+      <p id="ov-text"></p>
+      <button class="primary" id="again">Play again</button>
+    </div>
+  </div>
+  <p class="hint">Swap two gems next to each other to line up 3 or more of the same kind. Tap one gem then its neighbour, or swipe a gem. You have 30 moves.</p>
+  <button id="restart">New game</button>
+</main>
+<script src="shared.js"></script>
+<script>
+const N = 8, S = 56, TYPES = 6, MOVES = 30;
+const COLORS = ['#ef6f6c', '#f2b544', '#7cc46a', '#5aa9e6', '#b78bd6', '#f4ecd8'];
+const cv = document.getElementById('c'), ctx = cv.getContext('2d'), $ = id => document.getElementById(id);
+let grid, sel, busy, score, moves, down;
+
+const rnd = () => Math.floor(Math.random() * TYPES);
+const gem = (t, r, c) => ({ t, x: c, y: r, scale: 1 });
+function fresh() {
+  grid = [];
+  for (let r = 0; r < N; r++) {
+    grid.push([]);
+    for (let c = 0; c < N; c++) {
+      let t;
+      do t = rnd(); while ((c > 1 && grid[r][c - 1].t === t && grid[r][c - 2].t === t) || (r > 1 && grid[r - 1][c].t === t && grid[r - 2][c].t === t));
+      grid[r].push(gem(t, r - N, c)); // start above the board so they fall in
+    }
+  }
+  if (!hasMove()) fresh();
+}
+// Every cell that is part of a line of 3+.
+function matches() {
+  const hit = new Set();
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    const t = grid[r][c].t;
+    if (c < N - 2 && grid[r][c + 1].t === t && grid[r][c + 2].t === t) [0, 1, 2].forEach(k => hit.add(r * N + c + k));
+    if (r < N - 2 && grid[r + 1][c].t === t && grid[r + 2][c].t === t) [0, 1, 2].forEach(k => hit.add((r + k) * N + c));
+  }
+  return hit;
+}
+function swapCells(a, b) { [grid[a.r][a.c], grid[b.r][b.c]] = [grid[b.r][b.c], grid[a.r][a.c]]; }
+function hasMove() {
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) for (const [dr, dc] of [[0, 1], [1, 0]]) {
+    if (r + dr >= N || c + dc >= N) continue;
+    const a = { r, c }, b = { r: r + dr, c: c + dc };
+    swapCells(a, b); const ok = matches().size > 0; swapCells(a, b);
+    if (ok) return true;
+  }
+  return false;
+}
+const settled = () => grid.every((row, r) => row.every((g, c) => Math.abs(g.x - c) < .01 && Math.abs(g.y - r) < .01 && g.scale === 1));
+const wait = cond => new Promise(res => { const f = () => cond() ? res() : requestAnimationFrame(f); f(); });
+
+async function trySwap(a, b) {
+  busy = true; sel = null;
+  swapCells(a, b); await wait(settled);
+  let found = matches();
+  if (!found.size) { swapCells(a, b); await wait(settled); busy = false; return; }
+  moves--; hud();
+  let combo = 1;
+  while (found.size) {
+    score += found.size * 10 * combo; hud();
+    found.forEach(i => { grid[Math.floor(i / N)][i % N].dying = true; });
+    await wait(() => [...found].every(i => grid[Math.floor(i / N)][i % N].scale <= 0));
+    for (let c = 0; c < N; c++) {
+      const keep = [];
+      for (let r = N - 1; r >= 0; r--) if (!grid[r][c].dying) keep.push(grid[r][c]);
+      for (let r = N - 1, k = 0; r >= 0; r--, k++) grid[r][c] = keep[k] || gem(rnd(), -1 - (k - keep.length), c);
+    }
+    await wait(settled);
+    found = matches(); combo++;
+  }
+  if (!hasMove()) { const all = grid.flat().map(g => g.t).sort(() => Math.random() - .5); grid.flat().forEach((g, i) => g.t = all[i]); if (matches().size || !hasMove()) fresh(); }
+  busy = false;
+  if (!moves) {
+    const record = Best.save('gem-swap', score); $('best').textContent = Best.get('gem-swap');
+    $('ov-text').textContent = `Final score: ${score}.${record ? ' New best!' : ''}`;
+    $('overlay').hidden = false;
+  }
+}
+
+function shape(t, x, y, s) {
+  ctx.fillStyle = COLORS[t]; ctx.beginPath();
+  const pts = n => { for (let i = 0; i < n; i++) { const a = -Math.PI / 2 + i * 2 * Math.PI / n; ctx.lineTo(x + Math.cos(a) * s, y + Math.sin(a) * s); } };
+  if (t === 0) ctx.arc(x, y, s * .9, 0, 7);
+  if (t === 1) ctx.roundRect(x - s * .8, y - s * .8, s * 1.6, s * 1.6, 6);
+  if (t === 2) pts(4);
+  if (t === 3) pts(3);
+  if (t === 4) pts(6);
+  if (t === 5) for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? s * .45 : s; ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); }
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.arc(x - s * .3, y - s * .3, s * .18, 0, 7); ctx.fill();
+}
+function draw() {
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) { ctx.fillStyle = (r + c) % 2 ? '#183530' : '#1d3d37'; ctx.fillRect(c * S, r * S, S, S); }
+  if (sel) { ctx.strokeStyle = '#f2b544'; ctx.lineWidth = 3; ctx.strokeRect(sel.c * S + 2, sel.r * S + 2, S - 4, S - 4); }
+  grid.forEach((row, r) => row.forEach((g, c) => {
+    g.x += Math.sign(c - g.x) * Math.min(Math.abs(c - g.x), .18);
+    g.y += Math.sign(r - g.y) * Math.min(Math.abs(r - g.y), .22);
+    g.scale = g.dying ? Math.max(0, g.scale - .1) : g.scale;
+    if (g.y > -1 && g.scale > 0) shape(g.t, g.x * S + S / 2, g.y * S + S / 2, S * .36 * g.scale);
+  }));
+  requestAnimationFrame(draw);
+}
+function hud() { $('score').textContent = score; $('moves').textContent = moves; }
+function reset() { score = 0; moves = MOVES; sel = null; busy = false; fresh(); hud(); $('overlay').hidden = true; }
+
+const cellAt = e => { const b = cv.getBoundingClientRect(); return { r: Math.floor((e.clientY - b.top) / b.height * N), c: Math.floor((e.clientX - b.left) / b.width * N), x: e.clientX, y: e.clientY }; };
+const adjacent = (a, b) => Math.abs(a.r - b.r) + Math.abs(a.c - b.c) === 1;
+cv.addEventListener('pointerdown', e => {
+  if (busy || !moves) return;
+  const p = cellAt(e);
+  if (sel && adjacent(sel, p)) { trySwap(sel, p); return; }
+  sel = p; down = p;
+});
+cv.addEventListener('pointermove', e => {
+  if (!down || busy) return;
+  const dx = e.clientX - down.x, dy = e.clientY - down.y;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) return;
+  const to = Math.abs(dx) > Math.abs(dy) ? { r: down.r, c: down.c + Math.sign(dx) } : { r: down.r + Math.sign(dy), c: down.c };
+  const from = down; down = null;
+  if (to.r >= 0 && to.r < N && to.c >= 0 && to.c < N) trySwap(from, to);
+});
+addEventListener('pointerup', () => { down = null; });
+$('again').onclick = $('restart').onclick = reset;
+$('best').textContent = Best.get('gem-swap');
+reset(); draw();
+</script>
+</body>
+</html>

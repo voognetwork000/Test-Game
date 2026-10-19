@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mini Golf</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>.board { max-width: 400px; } canvas { cursor: crosshair; }</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Mini Golf</h1>
+  <div class="stats">
+    <div class="stat"><small>Hole</small><b id="hole">1 / 6</b></div>
+    <div class="stat"><small>Par</small><b id="par">2</b></div>
+    <div class="stat"><small>Strokes</small><b id="strokes">0</b></div>
+    <div class="stat"><small>Total</small><b id="total">0</b></div>
+  </div>
+</header>
+<main class="stage">
+  <div class="board">
+    <canvas id="c" width="400" height="600" aria-label="Golf course"></canvas>
+    <div class="overlay" id="overlay" hidden>
+      <h2 id="ov-title"></h2>
+      <p id="ov-text"></p>
+      <button class="primary" id="ov-btn">Next hole</button>
+    </div>
+  </div>
+  <p class="hint">Drag backwards from anywhere on the course, like pulling a slingshot, then let go to putt. A longer pull hits harder. Stay out of the water! Best round: <b id="best">–</b></p>
+</main>
+<script src="shared.js"></script>
+<script>
+const W = 400, H = 600, BR = 7, CUP = 11, EDGE = 12, MAXPULL = 150, MAXSPEED = 950;
+// walls: [x, y, w, h]; bumpers: [x, y, r]; sand / water: [x, y, w, h]
+const HOLES = [
+  { par: 2, start: [200, 520], cup: [200, 100], walls: [], bumpers: [], sand: [], water: [] },
+  { par: 3, start: [200, 520], cup: [200, 110], walls: [[90, 280, 220, 26]], bumpers: [], sand: [], water: [] },
+  { par: 3, start: [100, 530], cup: [320, 100], walls: [[200, 200, 200, 400]], bumpers: [], sand: [[60, 120, 110, 60]], water: [] },
+  { par: 3, start: [330, 530], cup: [320, 100], walls: [[0, 410, 270, 24], [130, 230, 270, 24]], bumpers: [], sand: [], water: [] },
+  { par: 3, start: [200, 530], cup: [110, 110], walls: [], bumpers: [], sand: [[250, 150, 150, 90]], water: [[0, 290, 260, 70]] },
+  { par: 3, start: [200, 535], cup: [200, 90], walls: [], bumpers: [[130, 320, 28], [270, 320, 28], [200, 210, 28]], sand: [], water: [[0, 420, 120, 50], [280, 420, 120, 50]] },
+];
+const cv = document.getElementById('c'), ctx = cv.getContext('2d'), $ = id => document.getElementById(id);
+let hi, hole, ball, strokes, total, drag, lastSafe, sunk, msg, msgT = 0, cardShown;
+
+const inRect = (x, y, [rx, ry, rw, rh]) => x >= rx && x <= rx + rw && y >= ry && y <= ry + rh;
+function loadHole(i) {
+  hi = i; hole = HOLES[i]; strokes = 0; sunk = false; cardShown = false;
+  ball = { x: hole.start[0], y: hole.start[1], vx: 0, vy: 0, s: 1 }; lastSafe = [ball.x, ball.y];
+  $('overlay').hidden = true; hud();
+}
+function newRound() { total = 0; loadHole(0); }
+function hud() {
+  $('hole').textContent = `${hi + 1} / ${HOLES.length}`; $('par').textContent = hole.par;
+  $('strokes').textContent = strokes; $('total').textContent = total;
+}
+const moving = () => Math.hypot(ball.vx, ball.vy) > 0;
+function say(text) { msg = text; msgT = 1.4; }
+
+function bounce(nx, ny, k) {
+  const dot = ball.vx * nx + ball.vy * ny;
+  if (dot < 0) { ball.vx -= (1 + k) * dot * nx; ball.vy -= (1 + k) * dot * ny; }
+}
+function physics(dt) {
+  if (sunk) { ball.s = Math.max(0, ball.s - dt * 4); return; }
+  if (!moving()) return;
+  ball.x += ball.vx * dt; ball.y += ball.vy * dt;
+  // Course edges
+  if (ball.x < EDGE + BR) { ball.x = EDGE + BR; bounce(1, 0, .75); }
+  if (ball.x > W - EDGE - BR) { ball.x = W - EDGE - BR; bounce(-1, 0, .75); }
+  if (ball.y < EDGE + BR) { ball.y = EDGE + BR; bounce(0, 1, .75); }
+  if (ball.y > H - EDGE - BR) { ball.y = H - EDGE - BR; bounce(0, -1, .75); }
+  for (const [rx, ry, rw, rh] of hole.walls) {
+    const nx = Math.max(rx, Math.min(ball.x, rx + rw)), ny = Math.max(ry, Math.min(ball.y, ry + rh));
+    const dx = ball.x - nx, dy = ball.y - ny, d = Math.hypot(dx, dy);
+    if (d >= BR || d === 0) continue;
+    ball.x = nx + dx / d * BR; ball.y = ny + dy / d * BR; bounce(dx / d, dy / d, .75);
+  }
+  for (const [bx, by, r] of hole.bumpers) {
+    const dx = ball.x - bx, dy = ball.y - by, d = Math.hypot(dx, dy);
+    if (d >= r + BR || d === 0) continue;
+    ball.x = bx + dx / d * (r + BR); ball.y = by + dy / d * (r + BR); bounce(dx / d, dy / d, 1.1);
+  }
+  const sand = hole.sand.some(r => inRect(ball.x, ball.y, r));
+  const f = Math.exp(-(sand ? 4.5 : 1.1) * dt);
+  ball.vx *= f; ball.vy *= f;
+  const sp = Math.hypot(ball.vx, ball.vy);
+  if (sp < (sand ? 30 : 9)) { ball.vx = ball.vy = 0; }
+  if (hole.water.some(r => inRect(ball.x, ball.y, r))) {
+    strokes++; hud(); say('Splash! +1 stroke');
+    ball.x = lastSafe[0]; ball.y = lastSafe[1]; ball.vx = ball.vy = 0;
+  }
+  const cd = Math.hypot(ball.x - hole.cup[0], ball.y - hole.cup[1]);
+  if (cd < CUP) {
+    if (sp < 420) { sunk = true; ball.x = hole.cup[0]; ball.y = hole.cup[1]; finishHole(); }
+    else { ball.vx *= .9; ball.vy *= .9; } // too fast: rolls over the cup
+  }
+  if (!moving() && strokes >= 10 && !sunk) { say('Picked up at 10 strokes'); sunk = true; finishHole(); }
+}
+function finishHole() {
+  total += strokes; hud();
+  const diff = strokes - hole.par;
+  const name = strokes === 1 ? 'Hole in one!' : { '-2': 'Eagle!', '-1': 'Birdie!', 0: 'Par', 1: 'Bogey', 2: 'Double bogey' }[diff] ?? `${diff} over par`;
+  const lastHole = hi === HOLES.length - 1, par = HOLES.reduce((s, h) => s + h.par, 0);
+  setTimeout(() => {
+    if (lastHole) {
+      const record = Best.save('mini-golf', total, true);
+      $('ov-title').textContent = 'Round complete';
+      $('ov-text').textContent = `${total} strokes (par ${par}).${record ? ' New best round!' : ''}`;
+      $('ov-btn').textContent = 'Play again'; $('best').textContent = Best.get('mini-golf');
+    } else {
+      $('ov-title').textContent = name;
+      $('ov-text').textContent = `${strokes} stroke${strokes === 1 ? '' : 's'} on a par ${hole.par}.`;
+      $('ov-btn').textContent = 'Next hole';
+    }
+    cardShown = true; $('overlay').hidden = false;
+  }, 700);
+}
+$('ov-btn').onclick = () => hi === HOLES.length - 1 ? newRound() : loadHole(hi + 1);
+
+function draw() {
+  ctx.fillStyle = '#6b4a32'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#4f9a58'; ctx.fillRect(EDGE, EDGE, W - EDGE * 2, H - EDGE * 2);
+  ctx.fillStyle = '#56a35f';
+  for (let y = EDGE; y < H - EDGE; y += 40) ctx.fillRect(EDGE, y, W - EDGE * 2, 20);
+  ctx.fillStyle = '#e3cf98'; for (const [x, y, w, h] of hole.sand) { ctx.beginPath(); ctx.roundRect(x, y, w, h, 20); ctx.fill(); }
+  ctx.fillStyle = '#3d8fd1'; for (const [x, y, w, h] of hole.water) { ctx.beginPath(); ctx.roundRect(x, y, w, h, 10); ctx.fill(); }
+  ctx.fillStyle = '#6b4a32'; for (const [x, y, w, h] of hole.walls) ctx.fillRect(x, y, w, h);
+  for (const [x, y, r] of hole.bumpers) {
+    ctx.fillStyle = '#ef6f6c'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+    ctx.fillStyle = '#f4ecd8'; ctx.beginPath(); ctx.arc(x, y, r * .45, 0, 7); ctx.fill();
+  }
+  const [cx, cy] = hole.cup;
+  ctx.fillStyle = '#1a2a1d'; ctx.beginPath(); ctx.arc(cx, cy, CUP, 0, 7); ctx.fill();
+  ctx.fillStyle = '#eef3e6'; ctx.fillRect(cx - 1, cy - 44, 2, 44);
+  ctx.fillStyle = '#ef6f6c'; ctx.beginPath(); ctx.moveTo(cx + 1, cy - 44); ctx.lineTo(cx + 24, cy - 37); ctx.lineTo(cx + 1, cy - 30); ctx.fill();
+  if (drag && !moving() && !sunk) {
+    const dx = drag.sx - drag.x, dy = drag.sy - drag.y, len = Math.min(MAXPULL, Math.hypot(dx, dy)), a = Math.atan2(dy, dx);
+    for (let i = 1; i <= 8; i++) {
+      const k = i / 8 * len * 1.3;
+      ctx.fillStyle = `rgba(255,255,255,${1 - i / 10})`;
+      ctx.beginPath(); ctx.arc(ball.x + Math.cos(a) * k, ball.y + Math.sin(a) * k, 3, 0, 7); ctx.fill();
+    }
+    ctx.fillStyle = len > MAXPULL * .75 ? '#ef6f6c' : '#f2b544';
+    ctx.fillRect(ball.x - 20, ball.y + 16, 40 * len / MAXPULL, 5);
+  }
+  ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.arc(ball.x + 2, ball.y + 2, BR * ball.s, 0, 7); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(ball.x, ball.y, BR * ball.s, 0, 7); ctx.fill();
+  if (msgT > 0) {
+    ctx.globalAlpha = Math.min(1, msgT * 2); ctx.fillStyle = '#10231f'; ctx.font = '24px "Lilita One", sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(msg, W / 2, H / 2); ctx.globalAlpha = 1;
+  }
+}
+
+const pt = e => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H }; };
+cv.addEventListener('pointerdown', e => {
+  if (moving() || sunk) return;
+  const p = pt(e); drag = { sx: p.x, sy: p.y, x: p.x, y: p.y }; cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener('pointermove', e => { if (drag) Object.assign(drag, pt(e)); });
+cv.addEventListener('pointerup', () => {
+  if (!drag) return;
+  const dx = drag.sx - drag.x, dy = drag.sy - drag.y, len = Math.hypot(dx, dy);
+  drag = null;
+  if (len < 6) return;
+  const power = Math.min(MAXPULL, len) / MAXPULL * MAXSPEED;
+  lastSafe = [ball.x, ball.y];
+  ball.vx = dx / len * power; ball.vy = dy / len * power;
+  strokes++; hud();
+});
+cv.addEventListener('pointercancel', () => { drag = null; });
+$('best').textContent = Best.get('mini-golf') || '–';
+newRound();
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(.03, (now - last) / 1000); last = now;
+  for (let i = 0; i < 6; i++) physics(dt / 6);
+  if (msgT > 0) msgT -= dt;
+  draw(); requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

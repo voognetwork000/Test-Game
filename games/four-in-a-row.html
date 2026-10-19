@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Four in a Row</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+  .grid { width: min(100%, 460px); display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; padding: 10px; background: #2f5d8f; border-radius: 14px; }
+  .col { display: grid; grid-template-rows: repeat(6, 1fr); gap: 6px; padding: 0; border: 0; background: none; border-radius: 30px; }
+  .col:hover:not(:disabled) { background: rgba(255,255,255,.08); }
+  .col:disabled { opacity: 1; cursor: default; }
+  .slot { aspect-ratio: 1; border-radius: 50%; background: var(--bg); }
+  .slot.p1 { background: var(--gold); } .slot.p2 { background: var(--danger); }
+  .slot.new { animation: drop .3s ease-in; }
+  .slot.win { box-shadow: 0 0 0 4px #fff inset; }
+  @keyframes drop { from { transform: translateY(calc(var(--fall) * -110%)); } }
+  @media (prefers-reduced-motion: reduce) { .slot.new { animation: none; } }
+  .msg { font-family: var(--display); font-size: 24px; min-height: 30px; margin: 0; text-align: center; }
+  .on { border-color: var(--gold) !important; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Four in a Row</h1>
+  <div class="stats">
+    <div class="stat"><small>Yellow</small><b id="s1">0</b></div>
+    <div class="stat"><small>Red</small><b id="s2">0</b></div>
+  </div>
+</header>
+<main class="stage">
+  <div class="row"><button data-mode="easy">Easy</button><button data-mode="hard">Hard</button><button data-mode="2p">2 players</button></div>
+  <p class="msg" id="msg"></p>
+  <div class="grid" id="grid" aria-label="Board"></div>
+  <button class="primary" id="next" hidden>Play again</button>
+  <p class="hint">Drop discs into the columns. First to line up four in a row (across, down or diagonal) wins. You are yellow.</p>
+</main>
+<script src="shared.js"></script>
+<script>
+const R = 6, C = 7, $ = id => document.getElementById(id);
+let board, turn, over, mode = 'easy', lastDrop, winCells = [], score = { 1: 0, 2: 0 }, starter = 1;
+
+const free = (b, c) => { for (let r = R - 1; r >= 0; r--) if (!b[r][c]) return r; return -1; };
+function winner(b) {
+  for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+    const p = b[r][c]; if (!p) continue;
+    for (const [dr, dc] of [[0, 1], [1, 0], [1, 1], [1, -1]]) {
+      const cells = [0, 1, 2, 3].map(k => [r + dr * k, c + dc * k]);
+      if (cells.every(([y, x]) => y >= 0 && y < R && x >= 0 && x < C && b[y][x] === p)) return { p, cells };
+    }
+  }
+  return null;
+}
+// Scores the board for the computer (2): open lines of 2 and 3 count, centre column helps.
+function evaluate(b) {
+  let s = 0;
+  for (let r = 0; r < R; r++) if (b[r][3] === 2) s += 3; else if (b[r][3] === 1) s -= 3;
+  for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) for (const [dr, dc] of [[0, 1], [1, 0], [1, 1], [1, -1]]) {
+    const er = r + dr * 3, ec = c + dc * 3;
+    if (er < 0 || er >= R || ec < 0 || ec >= C) continue;
+    let me = 0, you = 0;
+    for (let k = 0; k < 4; k++) { const v = b[r + dr * k][c + dc * k]; if (v === 2) me++; else if (v === 1) you++; }
+    if (me && you) continue;
+    s += [0, 1, 6, 40][me] || 0; s -= [0, 1, 6, 50][you] || 0;
+  }
+  return s;
+}
+const ORDER = [3, 2, 4, 1, 5, 0, 6];
+function negamax(b, depth, a, beta, p) {
+  const w = winner(b);
+  if (w) return w.p === p ? 100000 + depth : -100000 - depth;
+  if (ORDER.every(c => free(b, c) < 0)) return 0;
+  if (!depth) return p === 2 ? evaluate(b) : -evaluate(b);
+  let best = -Infinity;
+  for (const c of ORDER) {
+    const r = free(b, c); if (r < 0) continue;
+    b[r][c] = p;
+    const v = -negamax(b, depth - 1, -beta, -a, 3 - p);
+    b[r][c] = 0;
+    if (v > best) best = v;
+    if (best > a) a = best;
+    if (a >= beta) break;
+  }
+  return best;
+}
+function cpuMove(b, depth) {
+  let best = -Infinity, pick = ORDER.find(c => free(b, c) >= 0);
+  for (const c of ORDER) {
+    const r = free(b, c); if (r < 0) continue;
+    b[r][c] = 2;
+    const v = -negamax(b, depth - 1, -Infinity, Infinity, 1);
+    b[r][c] = 0;
+    if (v > best) { best = v; pick = c; }
+  }
+  return pick;
+}
+{ const b = Array.from({ length: R }, () => Array(C).fill(0)); b[5][0] = b[5][1] = b[5][2] = 1; console.assert(cpuMove(b, 2) === 3, 'computer blocks four'); }
+
+function render() {
+  $('grid').innerHTML = Array.from({ length: C }, (_, c) =>
+    `<button class="col" data-c="${c}" aria-label="Column ${c + 1}" ${over || free(board, c) < 0 ? 'disabled' : ''}>${Array.from({ length: R }, (_, r) => {
+      const p = board[r][c], isNew = lastDrop && lastDrop[0] === r && lastDrop[1] === c, win = winCells.some(([y, x]) => y === r && x === c);
+      return `<div class="slot${p ? ' p' + p : ''}${isNew ? ' new' : ''}${win ? ' win' : ''}" style="--fall:${r + 1}"></div>`;
+    }).join('')}</button>`).join('');
+  document.querySelectorAll('.col').forEach(b => b.onclick = () => humanMove(+b.dataset.c));
+  $('s1').textContent = score[1]; $('s2').textContent = score[2];
+}
+function drop(c) {
+  const r = free(board, c); if (r < 0) return false;
+  board[r][c] = turn; lastDrop = [r, c];
+  const w = winner(board);
+  if (w) {
+    over = true; winCells = w.cells; score[w.p]++;
+    if (mode !== '2p' && w.p === 1) Best.addWin('four-in-a-row');
+    $('msg').textContent = mode === '2p' ? `${w.p === 1 ? 'Yellow' : 'Red'} wins!` : w.p === 1 ? 'You win!' : 'The computer wins.';
+  } else if (board.every(row => row.every(Boolean))) { over = true; $('msg').textContent = "It's a draw."; }
+  else {
+    turn = 3 - turn;
+    $('msg').textContent = mode === '2p' ? `${turn === 1 ? 'Yellow' : 'Red'}'s turn` : turn === 1 ? 'Your turn' : 'Computer is thinking…';
+  }
+  $('next').hidden = !over;
+  render();
+  return true;
+}
+function humanMove(c) {
+  if (over || (mode !== '2p' && turn !== 1)) return;
+  if (drop(c) && !over && mode !== '2p') setTimeout(() => drop(cpuMove(board, mode === 'hard' ? 6 : 2)), 350);
+}
+function newGame() {
+  board = Array.from({ length: R }, () => Array(C).fill(0)); over = false; winCells = []; lastDrop = null;
+  turn = starter; starter = 3 - starter; $('next').hidden = true;
+  $('msg').textContent = mode === '2p' ? `${turn === 1 ? 'Yellow' : 'Red'} goes first` : turn === 1 ? 'Your turn' : 'Computer goes first';
+  render();
+  if (mode !== '2p' && turn === 2) setTimeout(() => drop(cpuMove(board, mode === 'hard' ? 6 : 2)), 400);
+}
+document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => {
+  mode = b.dataset.mode; score = { 1: 0, 2: 0 }; starter = 1;
+  document.querySelectorAll('[data-mode]').forEach(x => x.classList.toggle('on', x === b));
+  newGame();
+});
+document.querySelector('[data-mode="easy"]').classList.add('on');
+$('next').onclick = newGame;
+newGame();
+</script>
+</body>
+</html>

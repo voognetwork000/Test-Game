@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sudoku</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+  .board { max-width: 450px; }
+  .grid { display: grid; grid-template-columns: repeat(9, 1fr); background: #0b1a17; border: 3px solid #0b1a17; border-radius: 8px; overflow: hidden; gap: 1px; }
+  .grid button { aspect-ratio: 1; padding: 0; border: 0; border-radius: 0; background: #f4ecd8; color: #10231f; font-family: var(--display); font-weight: 400; font-size: clamp(18px, 5.5vw, 28px); min-width: 0; }
+  .grid button.given { color: #10231f; } .grid button.mine { color: #2c6fbf; }
+  .grid button.peer { background: #e6dcc3; } .grid button.same { background: #f2d58a; } .grid button.sel { background: #f2b544; }
+  .grid button.bad { color: #d23b3b; }
+  .grid button:nth-child(9n+3), .grid button:nth-child(9n+6) { margin-right: 2px; }
+  .grid button:nth-child(n+19):nth-child(-n+27), .grid button:nth-child(n+46):nth-child(-n+54) { margin-bottom: 2px; }
+  .nums { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; width: min(100%, 450px); }
+  .nums button { font-family: var(--display); font-weight: 400; font-size: 22px; padding: 8px 0; }
+  .nums button.done { opacity: .35; }
+  .on { border-color: var(--gold) !important; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Sudoku</h1>
+  <div class="stats">
+    <div class="stat"><small>Mistakes</small><b id="bad">0</b></div>
+    <div class="stat"><small>Time</small><b id="time">0:00</b></div>
+  </div>
+</header>
+<main class="stage">
+  <div class="row"><button data-lv="easy">Easy</button><button data-lv="medium">Medium</button><button data-lv="hard">Hard</button></div>
+  <div class="board">
+    <div class="grid" id="grid" aria-label="Sudoku grid"></div>
+    <div class="overlay" id="overlay" hidden>
+      <h2>Solved!</h2>
+      <p id="ov-text"></p>
+      <button class="primary" id="again">New puzzle</button>
+    </div>
+  </div>
+  <div class="nums" id="nums"></div>
+  <p class="hint">Fill every row, column and 3×3 box with the numbers 1 to 9. Pick a square, then a number. Wrong numbers show in red.</p>
+</main>
+<script src="shared.js"></script>
+<script>
+const REMOVE = { easy: 40, medium: 48, hard: 54 };
+const $ = id => document.getElementById(id);
+let lv = 'easy', puzzle, solution, cells, sel, mistakes, t0, timer, done;
+
+function candidates(g, i) {
+  const r = Math.floor(i / 9), c = i % 9, br = r - r % 3, bc = c - c % 3, used = new Set();
+  for (let k = 0; k < 9; k++) { used.add(g[r * 9 + k]); used.add(g[k * 9 + c]); used.add(g[(br + Math.floor(k / 3)) * 9 + bc + k % 3]); }
+  return [1, 2, 3, 4, 5, 6, 7, 8, 9].filter(n => !used.has(n));
+}
+// Empty square with the fewest options, so the search stays fast.
+function bestEmpty(g) {
+  let best = -1, opts;
+  for (let i = 0; i < 81; i++) {
+    if (g[i]) continue;
+    const c = candidates(g, i);
+    if (best < 0 || c.length < opts.length) { best = i; opts = c; if (c.length < 2) break; }
+  }
+  return [best, opts];
+}
+function fill(g) {
+  const [i, opts] = bestEmpty(g);
+  if (i < 0) return true;
+  for (const v of opts.sort(() => Math.random() - .5)) { g[i] = v; if (fill(g)) return true; }
+  g[i] = 0; return false;
+}
+function countSolutions(g, limit = 2) {
+  const [i, opts] = bestEmpty(g);
+  if (i < 0) return 1;
+  let n = 0;
+  for (const v of opts) { g[i] = v; n += countSolutions(g, limit - n); if (n >= limit) break; }
+  g[i] = 0; return n;
+}
+function generate(remove) {
+  const g = Array(81).fill(0); fill(g);
+  const sol = g.slice();
+  let removed = 0;
+  for (const i of [...Array(81).keys()].sort(() => Math.random() - .5)) {
+    if (removed >= remove) break;
+    const v = g[i]; g[i] = 0;
+    if (countSolutions(g.slice()) !== 1) g[i] = v; else removed++;
+  }
+  return [g, sol];
+}
+{ const [p, s] = generate(40); console.assert(p.every((v, i) => !v || v === s[i]) && countSolutions(p.slice()) === 1, 'puzzle has one answer'); }
+
+function newGame() {
+  [puzzle, solution] = generate(REMOVE[lv]);
+  cells = puzzle.slice(); sel = cells.indexOf(0); mistakes = 0; done = false;
+  clearInterval(timer); t0 = Date.now();
+  timer = setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); $('time').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }, 500);
+  $('overlay').hidden = true; $('bad').textContent = 0;
+  document.querySelectorAll('[data-lv]').forEach(b => b.classList.toggle('on', b.dataset.lv === lv));
+  render();
+}
+function render() {
+  const sr = Math.floor(sel / 9), sc = sel % 9, sv = cells[sel];
+  $('grid').innerHTML = cells.map((v, i) => {
+    const r = Math.floor(i / 9), c = i % 9, peer = r === sr || c === sc || (Math.floor(r / 3) === Math.floor(sr / 3) && Math.floor(c / 3) === Math.floor(sc / 3));
+    const cls = [puzzle[i] ? 'given' : 'mine', i === sel ? 'sel' : v && v === sv ? 'same' : peer ? 'peer' : '', v && v !== solution[i] ? 'bad' : ''].join(' ');
+    return `<button class="${cls}" data-i="${i}" aria-label="Row ${r + 1} column ${c + 1}${v ? ', ' + v : ''}">${v || ''}</button>`;
+  }).join('');
+  document.querySelectorAll('#grid button').forEach(b => b.onclick = () => { sel = +b.dataset.i; render(); });
+  document.querySelectorAll('#nums button[data-n]').forEach(b => {
+    const n = +b.dataset.n; b.classList.toggle('done', cells.filter((v, i) => v === n && v === solution[i]).length === 9);
+  });
+}
+function put(n) {
+  if (done || sel < 0 || puzzle[sel]) return;
+  cells[sel] = n;
+  if (n && n !== solution[sel]) { mistakes++; $('bad').textContent = mistakes; }
+  render();
+  if (cells.every((v, i) => v === solution[i])) {
+    done = true; clearInterval(timer);
+    const secs = Math.round((Date.now() - t0) / 1000), record = Best.save('sudoku-' + lv, secs, true);
+    $('ov-text').textContent = `You solved ${lv} in ${$('time').textContent} with ${mistakes} mistake${mistakes === 1 ? '' : 's'}.${record ? ' New best time!' : ''}`;
+    $('overlay').hidden = false;
+  }
+}
+
+$('nums').innerHTML = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button data-n="${n}">${n}</button>`).join('') + '<button id="erase" aria-label="Erase">⌫</button>';
+document.querySelectorAll('#nums button[data-n]').forEach(b => b.onclick = () => put(+b.dataset.n));
+$('erase').onclick = () => put(0);
+addEventListener('keydown', e => {
+  if (/^[1-9]$/.test(e.key)) put(+e.key);
+  else if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') put(0);
+  else {
+    const m = { ArrowUp: -9, ArrowDown: 9, ArrowLeft: -1, ArrowRight: 1 }[e.key];
+    if (m) { e.preventDefault(); sel = Math.max(0, Math.min(80, sel + m)); render(); }
+  }
+});
+document.querySelectorAll('[data-lv]').forEach(b => b.onclick = () => { lv = b.dataset.lv; newGame(); });
+$('again').onclick = newGame;
+newGame();
+</script>
+</body>
+</html>

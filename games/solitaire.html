@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Solitaire</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+  .top, .stage { max-width: 640px; }
+  .table { --cw: min(80px, calc((100vw - 32px - 36px) / 7)); --ch: calc(var(--cw) * 1.4); display: grid; grid-template-columns: repeat(7, var(--cw)); gap: 14px 6px; justify-content: center; position: relative; user-select: none; -webkit-user-select: none; }
+  .pile { position: relative; width: var(--cw); height: var(--ch); border-radius: 6px; border: 2px dashed var(--line); }
+  .pile.tab { border-style: dashed; min-height: var(--ch); height: auto; }
+  .pile.f::after { content: attr(data-hint); position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--line); font-size: calc(var(--cw) * .45); }
+  .spacer { visibility: hidden; }
+  .card { position: absolute; left: -2px; width: var(--cw); height: var(--ch); border-radius: 6px; background: #fbf7ec; border: 1px solid #c9bfa8; color: #1d1d1d; cursor: pointer; padding: 2px 4px; font-weight: 800; line-height: 1; font-size: calc(var(--cw) * .26); }
+  .card.red { color: #c0392b; }
+  .card .big { position: absolute; right: 4px; bottom: 2px; font-size: calc(var(--cw) * .5); }
+  .card.down { background: repeating-linear-gradient(45deg, #2f6f6a 0 6px, #296361 6px 12px); border-color: #1b4643; }
+  .card.down * { display: none; }
+  .card.sel { box-shadow: 0 0 0 3px var(--gold); }
+  .pile.stock { cursor: pointer; }
+  .pile.stock .count { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: calc(var(--cw) * .35); }
+  .bar { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Solitaire</h1>
+  <div class="stats">
+    <div class="stat"><small>Moves</small><b id="moves">0</b></div>
+    <div class="stat"><small>Time</small><b id="time">0:00</b></div>
+    <div class="stat"><small>Wins</small><b id="wins">0</b></div>
+  </div>
+</header>
+<main class="stage">
+  <div class="board">
+    <div class="table" id="table"></div>
+    <div class="overlay" id="overlay" hidden>
+      <h2>You won!</h2>
+      <p id="ov-text"></p>
+      <button class="primary" id="again">Deal again</button>
+    </div>
+  </div>
+  <div class="bar"><button id="deal">New deal</button><button id="finish" hidden>Auto finish</button></div>
+  <p class="hint">Build four piles from Ace to King, one per suit. In the columns, stack cards downward in alternating colours. Tap a card to pick it up, then tap where it should go. Tap a picked-up card again to send it somewhere it fits. Tap the deck to turn over a card.</p>
+</main>
+<script src="shared.js"></script>
+<script>
+const SUITS = ['♠', '♥', '♦', '♣'], RANKS = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+const $ = id => document.getElementById(id);
+const red = c => c.s === 1 || c.s === 2;
+let stock, waste, found, tab, sel, moves, t0, timer, won;
+
+function deal() {
+  const deck = [];
+  for (let s = 0; s < 4; s++) for (let r = 1; r <= 13; r++) deck.push({ s, r, up: false });
+  for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
+  tab = Array.from({ length: 7 }, (_, i) => { const p = deck.splice(0, i + 1); p.at(-1).up = true; return p; });
+  stock = deck; waste = []; found = [[], [], [], []]; sel = null; moves = 0; won = false;
+  clearInterval(timer); t0 = Date.now();
+  timer = setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); $('time').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }, 500);
+  $('overlay').hidden = true; render();
+}
+const pile = id => id === 'stock' ? stock : id === 'waste' ? waste : id[0] === 'f' ? found[+id[1]] : tab[+id[1]];
+
+function fits(cards, to) {
+  const top = pile(to).at(-1), c = cards[0];
+  if (to[0] === 'f') return cards.length === 1 && (top ? top.s === c.s && c.r === top.r + 1 : c.r === 1);
+  if (to[0] === 't') return top ? top.up && red(top) !== red(c) && c.r === top.r - 1 : c.r === 13;
+  return false;
+}
+function move(from, idx, to) {
+  if (from === to) return false;
+  const src = pile(from), cards = src.slice(idx);
+  if (!cards.length || !fits(cards, to)) return false;
+  src.splice(idx); pile(to).push(...cards); moves++;
+  if (from[0] === 't' && src.length && !src.at(-1).up) src.at(-1).up = true;
+  return true;
+}
+// Sends a card (and the cards on it) to the first place it fits: foundations first.
+function autoMove(from, idx) {
+  const targets = ['f0', 'f1', 'f2', 'f3', ...[0, 1, 2, 3, 4, 5, 6].map(i => 't' + i)];
+  const isKingAtBottom = from[0] === 't' && idx === 0;
+  for (const to of targets) {
+    if (to[0] === 't' && !tab[+to[1]].length && isKingAtBottom) continue; // pointless move
+    if (move(from, idx, to)) return true;
+  }
+  return false;
+}
+function tap(id, idx) {
+  if (won) return;
+  if (id === 'stock') {
+    if (stock.length) { const c = stock.pop(); c.up = true; waste.push(c); }
+    else { stock = waste.reverse().map(c => ({ ...c, up: false })); waste = []; }
+    sel = null; return render();
+  }
+  const arr = pile(id), card = arr[idx];
+  if (sel) {
+    const same = sel.id === id && sel.idx === idx, from = sel;
+    sel = null;
+    if (same ? autoMove(from.id, from.idx) : move(from.id, from.idx, id)) return render();
+  }
+  if (card && card.up && (id[0] === 't' || idx === arr.length - 1)) sel = { id, idx };
+  render();
+}
+
+function cardHtml(c, id, idx, top) {
+  const cls = ['card', c.up ? (red(c) ? 'red' : '') : 'down', sel && sel.id === id && idx >= sel.idx ? 'sel' : ''].join(' ');
+  const label = c.up ? `${RANKS[c.r]} of ${['spades', 'hearts', 'diamonds', 'clubs'][c.s]}` : 'Face-down card';
+  return `<div class="${cls}" data-id="${id}" data-idx="${idx}" style="top:${top}" role="button" tabindex="${c.up ? 0 : -1}" aria-label="${label}">${c.up ? `${RANKS[c.r]}${SUITS[c.s]}<span class="big">${SUITS[c.s]}</span>` : ''}</div>`;
+}
+function render() {
+  let h = `<div class="pile stock" data-id="stock" role="button" tabindex="0" aria-label="Deck, ${stock.length} cards">${stock.length ? cardHtml(stock.at(-1), 'stock', stock.length - 1, '-2px') : `<span class="count">↻</span>`}</div>`;
+  h += `<div class="pile" data-id="waste">${waste.slice(-1).map(c => cardHtml(c, 'waste', waste.length - 1, '-2px')).join('')}</div><div class="spacer"></div>`;
+  h += found.map((f, i) => `<div class="pile f" data-id="f${i}" data-hint="${SUITS[i]}">${f.slice(-1).map(c => cardHtml(c, 'f' + i, f.length - 1, '-2px')).join('')}</div>`).join('');
+  h += tab.map((p, i) => {
+    let off = 0;
+    const cards = p.map((c, k) => { const html = cardHtml(c, 't' + i, k, `calc(var(--cw) * ${off} - 2px)`); off += c.up ? .42 : .22; return html; }).join('');
+    return `<div class="pile tab" data-id="t${i}" style="height:calc(var(--ch) + var(--cw) * ${Math.max(0, off - (p.at(-1)?.up ? .42 : .22))})">${cards}</div>`;
+  }).join('');
+  $('table').innerHTML = h;
+  $('moves').textContent = moves;
+  $('finish').hidden = !(stock.length === 0 && waste.length === 0 && tab.every(p => p.every(c => c.up))) || won;
+  if (!won && found.every(f => f.length === 13)) {
+    won = true; clearInterval(timer); Best.addWin('solitaire'); $('wins').textContent = Best.get('solitaire');
+    $('ov-text').textContent = `${moves} moves in ${$('time').textContent}.`;
+    setTimeout(() => { $('overlay').hidden = false; }, 300);
+  }
+}
+
+$('table').addEventListener('click', e => {
+  const card = e.target.closest('.card'), p = e.target.closest('.pile');
+  if (!p) return;
+  const id = p.dataset.id;
+  tap(id, card && id !== 'stock' ? +card.dataset.idx : pile(id).length - 1);
+});
+$('table').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.target.click(); } });
+$('finish').onclick = () => {
+  const step = () => {
+    const from = ['waste', ...tab.map((_, i) => 't' + i)].find(id => pile(id).length && [0, 1, 2, 3].some(f => fits([pile(id).at(-1)], 'f' + f)));
+    if (!from) return;
+    autoMove(from, pile(from).length - 1); render();
+    if (!won) setTimeout(step, 70);
+  };
+  step();
+};
+$('deal').onclick = $('again').onclick = deal;
+$('wins').textContent = Best.get('solitaire');
+deal();
+</script>
+</body>
+</html>
