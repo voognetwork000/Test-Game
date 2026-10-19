@@ -1,0 +1,458 @@
+<title>Meadow Keep</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<style>
+  /* Layout: map on the left, command panel on the right; panel drops below the map on phones. Single dusk-meadow look in both themes. */
+  :root {
+    --bg: #10231f;
+    --panel: #183530;
+    --line: #2a4b44;
+    --fg: #eef3e6;
+    --muted: #9fb8ad;
+    --gold: #f2b544;
+    --danger: #ef6f6c;
+    --display: "Lilita One", "Arial Rounded MT Bold", system-ui, sans-serif;
+    --body: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  [hidden] { display: none !important; }
+  body {
+    background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 16px; box-sizing: border-box;
+  }
+  * { box-sizing: border-box; }
+  .wrap { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 20px; }
+  h1 { font-family: var(--display); font-weight: 400; font-size: 34px; margin: 0; letter-spacing: .5px; color: var(--gold); text-wrap: balance; }
+  .stats { display: flex; gap: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .stat small { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); font-weight: 700; }
+  .stat b { font-size: 22px; }
+  #lives { color: var(--danger); }
+  #gold { color: var(--gold); }
+  .game { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 14px; align-items: start; }
+  @media (max-width: 860px) { .game { grid-template-columns: minmax(0, 1fr); } }
+  .board { position: relative; min-width: 0; }
+  canvas { display: block; width: 100%; max-width: 100%; aspect-ratio: 16 / 10; border-radius: 10px; border: 2px solid var(--line); touch-action: manipulation; cursor: pointer; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .label { font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); font-weight: 800; }
+  .shop { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  button { font: inherit; color: var(--fg); background: var(--bg); border: 2px solid var(--line); border-radius: 8px; padding: 8px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--muted); }
+  button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .tower-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; font-weight: 800; font-size: 13px; }
+  .tower-btn .dot { width: 22px; height: 22px; border-radius: 50%; border: 3px solid rgba(0,0,0,.35); }
+  .tower-btn .price { color: var(--gold); font-variant-numeric: tabular-nums; }
+  .tower-btn.on { border-color: var(--gold); background: #22433c; }
+  .info { min-height: 112px; display: flex; flex-direction: column; gap: 8px; line-height: 1.4; }
+  .info h3 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 20px; }
+  .info p { margin: 0; color: var(--muted); }
+  .rows { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-variant-numeric: tabular-nums; font-weight: 700; }
+  .rows span:nth-child(odd) { color: var(--muted); font-weight: 600; }
+  .actions { display: flex; gap: 8px; }
+  .actions button { flex: 1; font-weight: 800; }
+  #upgrade { border-color: var(--gold); }
+  #sell { border-color: var(--danger); }
+  .controls { display: flex; gap: 8px; }
+  #start { flex: 1; font-family: var(--display); font-size: 20px; background: var(--gold); color: #2b1d00; border-color: var(--gold); padding: 10px; }
+  #speed { width: 64px; font-weight: 800; }
+  .keys { font-size: 12px; color: var(--muted); }
+  .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: rgba(8, 20, 17, .82); border-radius: 10px; text-align: center; padding: 16px; }
+  .overlay h2 { font-family: var(--display); font-weight: 400; font-size: 44px; margin: 0; color: var(--gold); }
+  .overlay p { margin: 0; color: var(--fg); font-size: 17px; }
+  .overlay button { font-family: var(--display); font-size: 20px; background: var(--gold); color: #2b1d00; border-color: var(--gold); padding: 10px 22px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Meadow Keep</h1>
+    <div class="stats">
+      <div class="stat"><small>Lives</small><b id="lives">20</b></div>
+      <div class="stat"><small>Gold</small><b id="gold">150</b></div>
+      <div class="stat"><small>Wave</small><b id="wave">0 / 20</b></div>
+    </div>
+  </header>
+
+  <div class="game">
+    <div class="board">
+      <canvas id="c" width="768" height="480" aria-label="Game map"></canvas>
+      <div class="overlay" id="overlay" hidden>
+        <h2 id="ov-title">Game over</h2>
+        <p id="ov-text"></p>
+        <button id="again">Play again</button>
+      </div>
+    </div>
+
+    <aside class="panel">
+      <div class="label">Build a tower</div>
+      <div class="shop" id="shop"></div>
+      <div class="info" id="info"></div>
+      <div class="controls">
+        <button id="start">Start wave 1</button>
+        <button id="speed" aria-label="Game speed">1x</button>
+      </div>
+      <div class="keys">Keys: 1 2 3 pick a tower · Space starts the wave · Esc cancels</div>
+    </aside>
+  </div>
+</div>
+
+<script>
+// ---------- Map ----------
+const T = 48, COLS = 16, ROWS = 10, LAST_WAVE = 20;
+// Enemies walk through these tile corners, from off-screen left to off-screen right.
+const WAYPOINTS = [[-1, 2], [4, 2], [4, 7], [9, 7], [9, 1], [13, 1], [13, 8], [16, 8]];
+const pathTiles = new Set();
+for (let i = 0; i < WAYPOINTS.length - 1; i++) {
+  let [x, y] = WAYPOINTS[i];
+  const [x2, y2] = WAYPOINTS[i + 1];
+  for (;;) {
+    if (x >= 0 && x < COLS) pathTiles.add(x + ',' + y);
+    if (x === x2 && y === y2) break;
+    x += Math.sign(x2 - x); y += Math.sign(y2 - y);
+  }
+}
+const PTS = WAYPOINTS.map(([x, y]) => ({ x: (x + .5) * T, y: (y + .5) * T }));
+
+// ---------- Rules ----------
+const TYPES = {
+  arrow:  { key: '1', name: 'Archer', cost: 50,  range: 2.6, dmg: 10, rate: .45, color: '#e9c46a', desc: 'Fires fast arrows at one enemy.' },
+  cannon: { key: '2', name: 'Cannon', cost: 100, range: 2.3, dmg: 28, rate: 1.4, splash: 1, color: '#e76f51', desc: 'Slow shells that blast a whole group.' },
+  frost:  { key: '3', name: 'Frost',  cost: 75,  range: 2.1, dmg: 5,  rate: .8,  slow: .5, color: '#7fd1e8', desc: 'Freezes enemies so they walk at half speed.' },
+};
+const FOES = {
+  grunt:  { hp: 30,  spd: 1.5,  gold: 4,  r: 11, color: '#9bd17b', lives: 1 },
+  runner: { hp: 18,  spd: 2.7,  gold: 4,  r: 8,  color: '#f4e285', lives: 1 },
+  tank:   { hp: 120, spd: .85,  gold: 12, r: 15, color: '#b78bd6', lives: 2 },
+  boss:   { hp: 700, spd: .65,  gold: 60, r: 21, color: '#ff6b8b', lives: 10 },
+};
+const MAX_LEVEL = 3;
+const stats = t => {
+  const b = TYPES[t.type], l = t.level - 1;
+  return { dmg: Math.round(b.dmg * 1.6 ** l), range: b.range + .35 * l, rate: b.rate * .9 ** l };
+};
+const upgradeCost = t => Math.round(TYPES[t.type].cost * .8 * t.level);
+const sellValue = t => Math.floor(t.spent * .7);
+const hpScale = w => 1 + (w - 1) * .22 + (w - 1) ** 2 * .012;
+
+function buildWave(w) {
+  const q = [], n = 6 + w * 2;
+  for (let i = 0; i < n; i++) {
+    let k = 'grunt';
+    if (w >= 3 && i % 3 === 1) k = 'runner';
+    if (w >= 4 && i % 5 === 4) k = 'tank';
+    q.push(k);
+  }
+  if (w % 5 === 0) q.push('boss');
+  return q;
+}
+
+// Self-check: the path is continuous and waypoints sit on it.
+console.assert(pathTiles.size === 34, 'path tile count', pathTiles.size);
+console.assert(WAYPOINTS.slice(1, -1).every(([x, y]) => pathTiles.has(x + ',' + y)), 'waypoints on path');
+console.assert(buildWave(5).at(-1) === 'boss', 'boss every 5 waves');
+
+// ---------- State ----------
+let S;
+function reset() {
+  S = { lives: 20, gold: 150, wave: 0, running: false, queue: [], spawnT: 0,
+        towers: [], foes: [], shots: [], fx: [], placing: null, selected: null,
+        hover: null, speed: 1, over: false };
+  overlay.hidden = true;
+  renderPanel();
+}
+
+// ---------- DOM ----------
+const $ = id => document.getElementById(id);
+const cv = $('c'), ctx = cv.getContext('2d');
+const overlay = $('overlay'), shop = $('shop'), info = $('info');
+
+for (const [type, b] of Object.entries(TYPES)) {
+  const btn = document.createElement('button');
+  btn.className = 'tower-btn'; btn.id = 'buy-' + type;
+  btn.innerHTML = `<span class="dot" style="background:${b.color}"></span>${b.name}<span class="price">${b.cost}g</span>`;
+  btn.onclick = () => pick(type);
+  shop.append(btn);
+}
+
+function pick(type) {
+  if (S.over) return;
+  S.placing = S.placing === type ? null : type;
+  S.selected = null;
+  renderPanel();
+}
+
+function renderPanel() {
+  for (const type in TYPES) $('buy-' + type).classList.toggle('on', S.placing === type);
+  const t = S.selected;
+  if (t) {
+    const s = stats(t), b = TYPES[t.type], maxed = t.level >= MAX_LEVEL;
+    info.innerHTML = `<h3>${b.name} · level ${t.level}</h3>
+      <div class="rows"><span>Damage</span><span>${s.dmg}</span><span>Range</span><span>${s.range.toFixed(1)} tiles</span><span>Shots / sec</span><span>${(1 / s.rate).toFixed(1)}</span></div>
+      <div class="actions"><button id="upgrade" ${maxed ? 'disabled' : ''}>${maxed ? 'Max level' : 'Upgrade ' + upgradeCost(t) + 'g'}</button>
+      <button id="sell">Sell +${sellValue(t)}g</button></div>`;
+    $('upgrade').onclick = upgrade;
+    $('sell').onclick = sell;
+  } else if (S.placing) {
+    const b = TYPES[S.placing];
+    info.innerHTML = `<h3>${b.name}</h3><p>${b.desc}</p><p>Tap a grass tile to build it. Towers can't go on the dirt road.</p>`;
+  } else {
+    info.innerHTML = `<h3>Defend the keep</h3><p>Monsters walk the dirt road toward your castle. Build towers on the grass beside it, then start the wave. Tap a tower to upgrade or sell it.</p>`;
+  }
+  updateHud();
+}
+
+function updateHud() {
+  $('lives').textContent = S.lives;
+  $('gold').textContent = S.gold;
+  $('wave').textContent = `${S.wave} / ${LAST_WAVE}`;
+  for (const type in TYPES) $('buy-' + type).disabled = S.gold < TYPES[type].cost || S.over;
+  const start = $('start');
+  start.disabled = S.running || S.over;
+  start.textContent = S.running ? `Wave ${S.wave} incoming…` : `Start wave ${S.wave + 1}`;
+  const up = $('upgrade');
+  if (up && S.selected && S.selected.level < MAX_LEVEL) up.disabled = S.gold < upgradeCost(S.selected);
+}
+
+function upgrade() {
+  const t = S.selected, c = upgradeCost(t);
+  if (!t || t.level >= MAX_LEVEL || S.gold < c) return;
+  S.gold -= c; t.spent += c; t.level++;
+  renderPanel();
+}
+
+function sell() {
+  const t = S.selected;
+  if (!t) return;
+  S.gold += sellValue(t);
+  S.towers = S.towers.filter(x => x !== t);
+  S.selected = null;
+  renderPanel();
+}
+
+function startWave() {
+  if (S.running || S.over) return;
+  S.wave++; S.running = true; S.queue = buildWave(S.wave); S.spawnT = 0;
+  updateHud();
+}
+
+$('start').onclick = startWave;
+$('speed').onclick = () => { S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; $('speed').textContent = S.speed + 'x'; };
+$('again').onclick = reset;
+
+function tileAt(e) {
+  const r = cv.getBoundingClientRect();
+  return { x: Math.floor((e.clientX - r.left) / r.width * COLS), y: Math.floor((e.clientY - r.top) / r.height * ROWS) };
+}
+const towerAt = (x, y) => S.towers.find(t => t.x === x && t.y === y);
+const canBuild = (x, y) => x >= 0 && y >= 0 && x < COLS && y < ROWS && !pathTiles.has(x + ',' + y) && !towerAt(x, y);
+
+cv.addEventListener('pointermove', e => { S.hover = tileAt(e); });
+cv.addEventListener('pointerleave', () => { S.hover = null; });
+cv.addEventListener('pointerdown', e => {
+  if (S.over) return;
+  const { x, y } = tileAt(e);
+  S.hover = { x, y };
+  const t = towerAt(x, y);
+  if (t) { S.selected = t; S.placing = null; }
+  else if (S.placing && canBuild(x, y) && S.gold >= TYPES[S.placing].cost) {
+    const cost = TYPES[S.placing].cost;
+    S.gold -= cost;
+    S.towers.push({ type: S.placing, x, y, level: 1, spent: cost, cd: 0, angle: 0 });
+    if (S.gold < cost) S.placing = null;
+  } else { S.selected = null; S.placing = null; }
+  renderPanel();
+});
+
+addEventListener('keydown', e => {
+  const type = Object.keys(TYPES).find(k => TYPES[k].key === e.key);
+  if (type && S.gold >= TYPES[type].cost) pick(type);
+  else if (e.key === ' ' && e.target === document.body) { e.preventDefault(); startWave(); }
+  else if (e.key === 'Escape') { S.placing = null; S.selected = null; renderPanel(); }
+});
+
+// ---------- Simulation ----------
+function spawn(kind) {
+  const f = FOES[kind], hp = Math.round(f.hp * hpScale(S.wave));
+  S.foes.push({ kind, ...f, hp, maxHp: hp, x: PTS[0].x, y: PTS[0].y, seg: 0, dist: 0, slowT: 0 });
+}
+
+function hurt(f, dmg) {
+  if (f.hp <= 0) return;
+  f.hp -= dmg;
+  if (f.hp <= 0) {
+    S.gold += f.gold;
+    S.fx.push({ kind: 'pop', x: f.x, y: f.y, r: f.r, color: f.color, t: 0, life: .35 });
+    S.fx.push({ kind: 'text', x: f.x, y: f.y - f.r, text: '+' + f.gold, t: 0, life: .8 });
+  }
+}
+
+function step(dt) {
+  if (S.running && S.queue.length) {
+    S.spawnT -= dt;
+    if (S.spawnT <= 0) { spawn(S.queue.shift()); S.spawnT = .65; }
+  }
+
+  for (const f of S.foes) {
+    if (f.slowT > 0) f.slowT -= dt;
+    let move = f.spd * T * dt * (f.slowT > 0 ? .5 : 1);
+    while (move > 0 && f.seg < PTS.length - 1) {
+      const p = PTS[f.seg + 1], dx = p.x - f.x, dy = p.y - f.y, d = Math.hypot(dx, dy);
+      if (d <= move) { f.x = p.x; f.y = p.y; f.seg++; move -= d; f.dist += d; }
+      else { f.x += dx / d * move; f.y += dy / d * move; f.dist += move; move = 0; }
+    }
+    if (f.seg === PTS.length - 1 && f.hp > 0) { f.hp = 0; S.lives = Math.max(0, S.lives - f.lives); }
+  }
+  S.foes = S.foes.filter(f => f.hp > 0);
+
+  for (const t of S.towers) {
+    const s = stats(t), cx = (t.x + .5) * T, cy = (t.y + .5) * T, r = s.range * T;
+    t.cd -= dt;
+    // Target the enemy furthest along the road.
+    let target = null;
+    for (const f of S.foes) if (Math.hypot(f.x - cx, f.y - cy) <= r && (!target || f.dist > target.dist)) target = f;
+    if (!target) continue;
+    t.angle = Math.atan2(target.y - cy, target.x - cx);
+    if (t.cd > 0) continue;
+    t.cd = s.rate;
+    const b = TYPES[t.type];
+    S.shots.push({ type: t.type, x: cx, y: cy, target, tx: target.x, ty: target.y, dmg: s.dmg,
+                   splash: b.splash, slow: b.slow, speed: (t.type === 'cannon' ? 6 : 10) * T, color: b.color });
+  }
+
+  for (const sh of S.shots) {
+    // Cannon shells fly to where the enemy was; arrows and frost bolts home in.
+    if (!sh.splash) {
+      if (sh.target.hp <= 0) { sh.done = true; continue; }
+      sh.tx = sh.target.x; sh.ty = sh.target.y;
+    }
+    const dx = sh.tx - sh.x, dy = sh.ty - sh.y, d = Math.hypot(dx, dy), m = sh.speed * dt;
+    if (d > m) { sh.x += dx / d * m; sh.y += dy / d * m; continue; }
+    sh.done = true;
+    if (sh.splash) {
+      const rad = sh.splash * T;
+      for (const f of S.foes) if (Math.hypot(f.x - sh.tx, f.y - sh.ty) <= rad + f.r) hurt(f, sh.dmg);
+      S.fx.push({ kind: 'ring', x: sh.tx, y: sh.ty, r: rad, color: sh.color, t: 0, life: .3 });
+    } else {
+      hurt(sh.target, sh.dmg);
+      if (sh.slow) sh.target.slowT = 1.6;
+    }
+  }
+  S.shots = S.shots.filter(s => !s.done);
+  S.foes = S.foes.filter(f => f.hp > 0);
+
+  for (const e of S.fx) e.t += dt;
+  S.fx = S.fx.filter(e => e.t < e.life);
+
+  if (S.lives <= 0) return end(false);
+  if (S.running && !S.queue.length && !S.foes.length) {
+    S.running = false;
+    S.gold += 20 + S.wave * 2;
+    if (S.wave >= LAST_WAVE) return end(true);
+  }
+}
+
+function end(won) {
+  S.over = true; S.running = false; S.placing = null; S.selected = null;
+  $('ov-title').textContent = won ? 'The keep stands!' : 'The keep has fallen';
+  $('ov-text').textContent = won ? `You held off all ${LAST_WAVE} waves with ${S.lives} lives left.` : `You survived ${S.wave - 1} of ${LAST_WAVE} waves.`;
+  overlay.hidden = false;
+  renderPanel();
+}
+
+// ---------- Drawing ----------
+const bg = document.createElement('canvas');
+bg.width = cv.width; bg.height = cv.height;
+(() => {
+  const g = bg.getContext('2d');
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+    const road = pathTiles.has(x + ',' + y);
+    g.fillStyle = road ? ((x + y) % 2 ? '#c8a26b' : '#c09a63') : ((x + y) % 2 ? '#3f7d4e' : '#447f52');
+    g.fillRect(x * T, y * T, T, T);
+    if (!road && (x * 7 + y * 13) % 5 === 0) { // grass tufts
+      g.fillStyle = '#5a9a62';
+      g.fillRect(x * T + 12, y * T + 30, 3, 6); g.fillRect(x * T + 17, y * T + 27, 3, 9); g.fillRect(x * T + 33, y * T + 14, 3, 7);
+    }
+  }
+  // Castle at the road's end.
+  const cx = (COLS - 1) * T, cy = 8 * T;
+  g.fillStyle = '#8d8a8a'; g.fillRect(cx + 6, cy - 22, 36, 62);
+  g.fillStyle = '#a7a3a3'; for (let i = 0; i < 3; i++) g.fillRect(cx + 6 + i * 13, cy - 30, 10, 10);
+  g.fillStyle = '#3b2a1c'; g.fillRect(cx + 17, cy + 18, 14, 22);
+  g.fillStyle = '#f2b544'; g.fillRect(cx + 23, cy - 46, 2, 18); g.fillRect(cx + 25, cy - 46, 12, 8);
+})();
+
+function circle(x, y, r, fill) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = fill; ctx.fill(); }
+function rangeRing(x, y, r, ok) {
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = ok ? 'rgba(255,255,255,.12)' : 'rgba(239,111,108,.18)'; ctx.fill();
+  ctx.strokeStyle = ok ? 'rgba(255,255,255,.55)' : 'rgba(239,111,108,.8)'; ctx.lineWidth = 2; ctx.stroke();
+}
+
+function drawTower(t, ghost) {
+  const cx = (t.x + .5) * T, cy = (t.y + .5) * T, b = TYPES[t.type];
+  ctx.globalAlpha = ghost ? .6 : 1;
+  ctx.fillStyle = '#5b5148'; ctx.fillRect(t.x * T + 6, t.y * T + 6, T - 12, T - 12);
+  ctx.fillStyle = '#6d6259'; ctx.fillRect(t.x * T + 9, t.y * T + 9, T - 18, T - 18);
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(t.angle || 0);
+  ctx.fillStyle = '#2b2622';
+  ctx.fillRect(0, t.type === 'cannon' ? -5 : -3, t.type === 'cannon' ? 20 : 18, t.type === 'cannon' ? 10 : 6);
+  ctx.restore();
+  circle(cx, cy, 11, b.color);
+  for (let i = 0; i < (t.level || 1); i++) circle(t.x * T + 12 + i * 8, t.y * T + T - 10, 3, '#f2b544');
+  ctx.globalAlpha = 1;
+}
+
+function draw() {
+  ctx.drawImage(bg, 0, 0);
+
+  if (S.selected) { const t = S.selected; rangeRing((t.x + .5) * T, (t.y + .5) * T, stats(t).range * T, true); }
+
+  for (const t of S.towers) drawTower(t);
+
+  if (S.placing && S.hover) {
+    const { x, y } = S.hover, ok = canBuild(x, y);
+    rangeRing((x + .5) * T, (y + .5) * T, TYPES[S.placing].range * T, ok);
+    if (ok) drawTower({ type: S.placing, x, y, level: 1 }, true);
+  }
+
+  for (const f of S.foes) {
+    circle(f.x, f.y + 3, f.r, 'rgba(0,0,0,.25)');
+    circle(f.x, f.y, f.r, f.color);
+    if (f.slowT > 0) circle(f.x, f.y, f.r, 'rgba(127,209,232,.55)');
+    circle(f.x - f.r * .35, f.y - f.r * .2, f.r * .18, '#1d1d1d');
+    circle(f.x + f.r * .35, f.y - f.r * .2, f.r * .18, '#1d1d1d');
+    const w = f.r * 2 + 4;
+    ctx.fillStyle = '#2b1414'; ctx.fillRect(f.x - w / 2, f.y - f.r - 9, w, 4);
+    ctx.fillStyle = '#7ee081'; ctx.fillRect(f.x - w / 2, f.y - f.r - 9, w * f.hp / f.maxHp, 4);
+  }
+
+  for (const s of S.shots) circle(s.x, s.y, s.splash ? 5 : 3, s.type === 'arrow' ? '#fff2c4' : s.color);
+
+  for (const e of S.fx) {
+    const k = e.t / e.life;
+    ctx.globalAlpha = 1 - k;
+    if (e.kind === 'ring') { ctx.beginPath(); ctx.arc(e.x, e.y, e.r * (.4 + .6 * k), 0, Math.PI * 2); ctx.strokeStyle = e.color; ctx.lineWidth = 4; ctx.stroke(); }
+    if (e.kind === 'pop') circle(e.x, e.y, e.r * (1 + k), e.color);
+    if (e.kind === 'text') { ctx.fillStyle = '#f2b544'; ctx.font = '800 15px Nunito, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(e.text, e.x, e.y - k * 22); }
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ---------- Loop ----------
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000);
+  last = now;
+  for (let i = 0; i < S.speed && !S.over; i++) step(dt);
+  draw();
+  updateHud();
+  requestAnimationFrame(frame);
+}
+reset();
+requestAnimationFrame(frame);
+</script>
