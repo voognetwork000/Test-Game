@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hangman</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+  .word { font-family: var(--display); font-size: clamp(28px, 8vw, 46px); letter-spacing: 10px; text-align: center; margin: 8px 0 0; min-height: 56px; }
+  .hint { max-width: 46ch; }
+  #wrong { min-height: 24px; font-weight: 800; color: var(--danger); letter-spacing: 4px; }
+  .keys { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; max-width: 440px; }
+  .keys button { min-width: 36px; height: 42px; padding: 0 8px; font-weight: 800; }
+  .keys button.used { opacity: .3; }
+  .gallows { width: 120px; height: 120px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Hangman</h1>
+  <div class="stats">
+    <div class="stat"><small>Wrong</small><b id="wrongc">0</b></div>
+    <div class="stat"><small>Wins</small><b id="best">0</b></div>
+  </div>
+</header>
+<main class="stage">
+  <svg class="gallows" viewBox="0 0 120 120" aria-label="Hangman drawing">
+    <rect x="14" y="104" width="92" height="8" rx="3" fill="#7a5a3a"/>
+    <rect x="52" y="16" width="8" height="96" fill="#7a5a3a"/>
+    <rect x="52" y="16" width="52" height="8" fill="#7a5a3a"/>
+    <line id="rope" x1="104" y1="24" x2="104" y2="40" stroke="#9fb8ad" stroke-width="3" hidden/>
+    <g id="man" fill="#eef3e6" hidden>
+      <circle cx="104" cy="50" r="9"/>
+      <line x1="104" y1="59" x2="104" y2="84" stroke="#eef3e6" stroke-width="6" stroke-linecap="round"/>
+      <line x1="104" y1="68" x2="88" y2="76" stroke="#eef3e6" stroke-width="6" stroke-linecap="round"/>
+      <line x1="104" y1="68" x2="120" y2="76" stroke="#eef3e6" stroke-width="6" stroke-linecap="round"/>
+      <line x1="104" y1="84" x2="92" y2="102" stroke="#eef3e6" stroke-width="6" stroke-linecap="round"/>
+      <line x1="104" y1="84" x2="116" y2="102" stroke="#eef3e6" stroke-width="6" stroke-linecap="round"/>
+    </g>
+  </svg>
+  <p class="word" id="word"></p>
+  <p id="wrong"></p>
+  <div class="keys" id="keys" aria-label="Letter buttons"></div>
+  <div class="row">
+    <button class="primary" id="go">New word</button>
+  </div>
+  <p class="hint">Guess the word one letter at a time. Six wrong guesses and the man is hanged.</p>
+</main>
+<script src="shared.js"></script>
+<script>
+const WORDS = ['MEADOW', 'ARCADE', 'PUZZLE', 'SNAKE', 'TREASURE', 'CASTLE', 'FOREST', 'RIVER', 'MOUNTAIN', 'GARDEN', 'HARMONY', 'JOURNEY', 'KITTEN', 'LANTERN', 'MAPLE', 'NEBULA', 'ORCHARD', 'PARROT', 'QUARTZ', 'RAINBOW', 'SAFARI', 'THUNDER', 'UMBRELLA', 'VIOLET', 'WIZARD', 'ZEPHYR', 'COMET', 'DOLPHIN', 'EMBER', 'FALCON'];
+let word, mask, wrong, used;
+const $ = id => document.getElementById(id);
+
+const BODY = ['rope', 'man'];
+function gallows() {
+  BODY.forEach((id, i) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.hidden = i >= wrong;
+    el.style.transition = 'opacity .3s';
+  });
+}
+function newWord() {
+  word = WORDS[Math.floor(Math.random() * WORDS.length)];
+  mask = Array(word.length).fill(null);
+  wrong = 0; used = new Set();
+  $('wrongc').textContent = 0; $('wrong').textContent = '';
+  render(); gallows();
+}
+function guess(ch) {
+  if (used.has(ch) || wrong >= 6) return;
+  used.add(ch);
+  document.querySelectorAll('.keys button').forEach(b => { if (b.dataset.k === ch) b.classList.add('used'); });
+  if (word.includes(ch)) {
+    for (let i = 0; i < word.length; i++) if (word[i] === ch) mask[i] = ch;
+    if (!mask.includes(null)) { win(); return; }
+  } else {
+    wrong++; $('wrongc').textContent = wrong; $('wrong').textContent = [...used].filter(c => !word.includes(c)).join(' ');
+    gallows();
+    if (wrong >= 6) { lose(); return; }
+  }
+  render();
+}
+function win() {
+  Best.save('hangman', Best.get('hangman') + 1);
+  $('best').textContent = Best.get('hangman');
+  $('word').textContent = word;
+  setTimeout(() => alert('You saved him! The word was ' + word + '.'), 30);
+  newWord();
+}
+function lose() {
+  mask = [...word];
+  render();
+  setTimeout(() => alert('Hanged! The word was ' + word + '.'), 30);
+  newWord();
+}
+function render() {
+  $('word').textContent = mask.map(c => c || '_').join(' ');
+  const ks = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  $('keys').innerHTML = [...ks].map(k => `<button data-k="${k}" ${used.has(k) ? 'class="used"' : ''}>${k}</button>`).join('');
+  document.querySelectorAll('.keys button').forEach(b => b.onclick = () => guess(b.dataset.k));
+}
+addEventListener('keydown', e => {
+  if (/^[a-z]$/i.test(e.key)) guess(e.key.toUpperCase());
+});
+$('go').onclick = newWord;
+$('best').textContent = Best.get('hangman');
+newWord();
+</script>
+</body>
+</html>

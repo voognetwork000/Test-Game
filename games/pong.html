@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pong</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+  .board { max-width: 520px; }
+  #c { background: #10231f; cursor: none; touch-action: none; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Pong</h1>
+  <div class="stats">
+    <div class="stat"><small>You</small><b id="you">0</b></div>
+    <div class="stat"><small>Computer</small><b id="cpu">0</b></div>
+    <div class="stat"><small>Wins</small><b id="best">0</b></div>
+  </div>
+</header>
+<main class="stage">
+  <div class="board">
+    <canvas id="c" width="520" height="320" aria-label="Pong game"></canvas>
+    <div class="overlay" id="overlay">
+      <h2 id="ov-title">Pong</h2>
+      <p id="ov-text">Move your paddle with the mouse or your finger. First to 7 points wins.</p>
+      <button class="primary" id="go">Play</button>
+    </div>
+  </div>
+</main>
+<script src="shared.js"></script>
+<script>
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+const W = 520, H = 320, PW = 12, PH = 64, TARGET = 7;
+let playing, you, cpu, ball, won;
+
+function reset() {
+  you = { y: H / 2 - PH / 2 };
+  cpu = { y: H / 2 - PH / 2 };
+  // ball gains +1 speed per player point; starts slow
+  const boost = (Number($('you').textContent) + Number($('cpu').textContent)) * 0.25;
+  const a = (Math.random() < 0.5 ? -1 : 1) * (Math.random() * 0.6 + 0.35);
+  ball = { x: W / 2, y: H / 2, vx: (3.5 + boost) * a, vy: (3.5 + boost) * (1 - Math.abs(a)), frozen: 0 };
+  won = false;
+  playing = true;
+  $('overlay').hidden = true;
+}
+function point(who) {
+  if (who === 'you') $('you').textContent = Number($('you').textContent) + 1;
+  else $('cpu').textContent = Number($('cpu').textContent) + 1;
+  if (Number($('you').textContent) >= TARGET || Number($('cpu').textContent) >= TARGET) {
+    playing = false; won = true;
+    const win = Number($('you').textContent) > Number($('cpu').textContent);
+    if (win) Best.save('pong', Best.get('pong') + 1);
+    $('best').textContent = Best.get('pong');
+    $('ov-title').textContent = win ? 'You win!' : 'Computer wins.';
+    $('ov-text').textContent = `${$('you').textContent} – ${$('cpu').textContent}.${win ? ' Great rallying!' : ' Try again.'}`;
+    $('go').textContent = 'Rematch';
+    $('overlay').hidden = false;
+    return;
+  }
+  const a = (Math.random() < 0.5 ? -1 : 1) * (Math.random() * 0.6 + 0.35);
+  const sp = 3.5 + (Number($('you').textContent) + Number($('cpu').textContent)) * 0.25;
+  ball = { x: W / 2, y: H / 2, vx: sp * a, vy: sp * (1 - Math.abs(a)), frozen: 60 };
+}
+function frame(now) {
+  if (playing && !won) {
+    if (ball.frozen > 0) { ball.frozen--; }
+    else {
+      ball.x += ball.vx; ball.y += ball.vy;
+      if (ball.y < 8 || ball.y > H - 8) ball.vy *= -1;
+      // computer paddle
+      const target = ball.y - PH / 2;
+      cpu.y += Math.max(-5.5, Math.min(5.5, (target - cpu.y) * 0.07));
+      cpu.y = Math.max(0, Math.min(H - PH, cpu.y));
+      // player paddle
+      you.y = Math.max(0, Math.min(H - PH, you.y));
+      // paddles
+      if (ball.vx < 0 && ball.x < 24 && ball.x > 14 && ball.y > you.y && ball.y < you.y + PH) {
+        ball.vx = Math.abs(ball.vx) * 1.03;
+        ball.vy += (ball.y - (you.y + PH / 2)) * 0.12;
+      } else if (ball.vx > 0 && ball.x > W - 24 && ball.x < W - 14 && ball.y > cpu.y && ball.y < cpu.y + PH) {
+        ball.vx = -Math.abs(ball.vx) * 1.03;
+        ball.vy += (ball.y - (cpu.y + PH / 2)) * 0.12;
+      }
+      if (ball.x < -10) point('cpu');
+      else if (ball.x > W + 10) point('you');
+    }
+  }
+  draw();
+  requestAnimationFrame(frame);
+}
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#10231f'; ctx.fillRect(0, 0, W, H);
+  ctx.setLineDash([6, 8]); ctx.strokeStyle = '#2a4b44'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(W / 2, 8); ctx.lineTo(W / 2, H - 8); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#eef3e6'; ctx.fillRect(12, you.y, PW, PH);
+  ctx.fillStyle = '#f2b544'; ctx.fillRect(W - 24, cpu.y, PW, PH);
+  ctx.fillStyle = '#9fb8ad'; ctx.beginPath(); ctx.arc(ball.x, ball.y, 7, 0, 7); ctx.fill();
+}
+cv.addEventListener('pointermove', e => {
+  const r = cv.getBoundingClientRect();
+  you.y = (e.clientY - r.top) * (H / r.height) - PH / 2;
+});
+$('go').onclick = reset;
+$('best').textContent = Best.get('pong');
+reset(); requestAnimationFrame(frame);
+</script>
+</body>
+</html>

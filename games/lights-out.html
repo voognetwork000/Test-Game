@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lights Out</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+  .grid { width: min(100%, 360px); display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .grid button { aspect-ratio: 1; border-radius: 10px; background: var(--panel); }
+  .grid button.on { background: var(--gold); border-color: var(--gold); box-shadow: 0 0 18px rgba(242, 181, 68, .45); }
+  .msg { font-family: var(--display); font-size: 22px; min-height: 30px; margin: 0; text-align: center; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Lights Out</h1>
+  <div class="stats">
+    <div class="stat"><small>Moves</small><b id="moves">0</b></div>
+    <div class="stat"><small>Best</small><b id="best">0</b></div>
+  </div>
+</header>
+<main class="stage">
+  <p class="msg" id="msg">Turn off every light.</p>
+  <div class="grid" id="grid" aria-label="Lights grid"></div>
+  <div class="row">
+    <button class="primary" id="new">New puzzle</button>
+  </div>
+  <p class="hint">Click a light to flip it and its four neighbours. Clear all 25 lights with as few moves as possible.</p>
+</main>
+<script src="shared.js"></script>
+<script>
+const N = 5;
+const $ = id => document.getElementById(id);
+let grid, moves;
+
+function newGame() {
+  grid = Array(N * N).fill(false);
+  // apply random presses from all-off -> guaranteed solvable
+  const presses = 20 + Math.floor(Math.random() * 8);
+  for (let k = 0; k < presses; k++) toggleAt(Math.floor(Math.random() * N * N));
+  moves = 0;
+  $('moves').textContent = 0;
+  $('msg').textContent = 'Turn off every light.';
+  render();
+}
+function toggleAt(i) {
+  const x = i % N, y = Math.floor(i / N);
+  [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
+    const nx = x + dx, ny = y + dy;
+    if (nx >= 0 && nx < N && ny >= 0 && ny < N) grid[ny * N + nx] = !grid[ny * N + nx];
+  });
+}
+function press(i) {
+  toggleAt(i);
+  moves++; $('moves').textContent = moves;
+  render();
+  if (grid.every(v => !v)) {
+    const record = Best.save('lights-out', moves, true);
+    $('best').textContent = Best.get('lights-out');
+    $('msg').textContent = `All off in ${moves} moves!${record ? ' New best!' : ''}`;
+  }
+}
+function render() {
+  $('grid').innerHTML = grid.map((on, i) => `<button class="${on ? 'on' : ''}" data-i="${i}" aria-label="Light ${i + 1}${on ? ' on' : ''}"></button>`).join('');
+  document.querySelectorAll('#grid button').forEach(b => b.onclick = () => press(+b.dataset.i));
+}
+$('new').onclick = newGame;
+$('best').textContent = Best.get('lights-out');
+newGame();
+</script>
+</body>
+</html>

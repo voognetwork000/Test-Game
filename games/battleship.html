@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Battleship</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+  .sea { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; }
+  .side { flex: 1 1 260px; max-width: 300px; display: flex; flex-direction: column; gap: 6px; }
+  .side b { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px; }
+  .grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; background: var(--panel); border: 2px solid var(--line); border-radius: 8px; padding: 5px; }
+  .cell { aspect-ratio: 1; border: none; border-radius: 4px; background: #1d4a3a; padding: 0; }
+  .cell.ship { background: #4a7a5a; }
+  .cell.hit { background: var(--danger); }
+  .cell.miss { background: #2a4b44; }
+  .cell.hint { outline: 2px dashed var(--gold); outline-offset: -3px; }
+  .cell.sunk { background: repeating-linear-gradient(45deg, #ef6f6c 0 4px, #3a1f2a 4px 8px); }
+  .msg { font-family: var(--display); font-size: 22px; min-height: 32px; margin: 0; text-align: center; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Battleship</h1>
+  <div class="stats">
+    <div class="stat"><small>Shots</small><b id="shots">0</b></div>
+    <div class="stat"><small>Best win</small><b id="best">—</b></div>
+  </div>
+</header>
+<main class="stage">
+  <p class="msg" id="msg">Place your ships on the left board.</p>
+  <div class="sea">
+    <div class="side">
+      <b>Your sea</b>
+      <div class="grid" id="own" aria-label="Your grid"></div>
+      <div class="row">
+        <button id="rotate">Rotate ↻</button>
+        <button id="random">Random</button>
+      </div>
+    </div>
+    <div class="side">
+      <b>Enemy sea</b>
+      <div class="grid" id="enemy" aria-label="Enemy grid"></div>
+    </div>
+  </div>
+  <p class="hint">Click a cell to place the highlighted ship (length shown in the message). When all four are placed, fire at the enemy sea. Sink all ships first to win.</p>
+</main>
+<script src="shared.js"></script>
+<script>
+const N = 6;
+const SHIPS = [3, 2, 2, 1];
+const $ = id => document.getElementById(id);
+let own, enemy, enemyShips, placed, phase, horiz, shots;
+
+function newGame() {
+  own = Array.from({ length: N }, () => Array(N).fill(null));
+  enemy = Array.from({ length: N }, () => Array(N).fill(null));
+  enemyShips = [];
+  placed = 0; phase = 'place'; horiz = true; shots = 0;
+  $('shots').textContent = 0;
+  $('best').textContent = Best.get('battleship') || '—';
+  placeEnemy();
+  render(); updateMsg();
+}
+function placeEnemy() {
+  let tries = 0;
+  while (enemyShips.length < SHIPS.length && tries < 500) {
+    tries++;
+    const len = SHIPS[enemyShips.length], h = Math.random() < 0.5;
+    const r = Math.floor(Math.random() * (h ? N : N - len + 1));
+    const c = Math.floor(Math.random() * (h ? N - len + 1 : N));
+    const cells = [];
+    for (let i = 0; i < len; i++) cells.push([r + (h ? 0 : i), c + (h ? i : 0)]);
+    if (cells.every(([rr, cc]) => !enemy[rr][cc])) {
+      cells.forEach(([rr, cc]) => enemy[rr][cc] = 'ship');
+      enemyShips.push({ len, cells, hits: 0 });
+    }
+  }
+}
+function canPlace(r, c) {
+  if (phase !== 'place') return false;
+  const len = SHIPS[placed];
+  for (let i = 0; i < len; i++) {
+    const rr = horiz ? r : r + i, cc = horiz ? c + i : c;
+    if (rr >= N || cc >= N || own[rr][cc]) return false;
+  }
+  return true;
+}
+function tryPlace(r, c) {
+  if (!canPlace(r, c)) return;
+  const len = SHIPS[placed], idx = placed;
+  for (let i = 0; i < len; i++) {
+    const rr = horiz ? r : r + i, cc = horiz ? c + i : c;
+    own[rr][cc] = 'ship';
+  }
+  placed++;
+  if (placed === SHIPS.length) { phase = 'play'; updateMsg(); }
+  render(); updateMsg();
+}
+function randomPlace() {
+  if (phase !== 'place') return;
+  own = Array.from({ length: N }, () => Array(N).fill(null));
+  placed = 0; horiz = Math.random() < 0.5;
+  let tries = 0;
+  while (placed < SHIPS.length && tries < 2000) {
+    tries++;
+    horiz = Math.random() < 0.5;
+    const len = SHIPS[placed];
+    const r = Math.floor(Math.random() * (horiz ? N : N - len + 1));
+    const c = Math.floor(Math.random() * (horiz ? N - len + 1 : N));
+    const cells = [];
+    for (let i = 0; i < len; i++) cells.push([horiz ? r : r + i, horiz ? c + i : c]);
+    if (cells.every(([rr, cc]) => !own[rr][cc])) {
+      cells.forEach(([rr, cc]) => own[rr][cc] = 'ship');
+      placed++;
+    }
+  }
+  phase = 'play'; updateMsg(); render();
+}
+function updateMsg() {
+  if (phase === 'place') $('msg').textContent = `Place your ${SHIPS[placed]}-long ship (click a cell, or Rotate / Random).`;
+  else $('msg').textContent = 'Fire at the enemy sea! Click a square.';
+}
+function fire(r, c) {
+  if (phase !== 'play' || enemy[r][c] === 'hit' || enemy[r][c] === 'miss') return;
+  shots++; $('shots').textContent = shots;
+  if (enemy[r][c] === 'ship') {
+    enemy[r][c] = 'hit';
+    const ship = enemyShips.find(s => s.cells.some(([a, b]) => a === r && b === c));
+    if (ship) {
+      ship.hits++;
+      if (ship.hits === ship.len) {
+        ship.cells.forEach(([a, b]) => enemy[a][b] = 'sunk');
+        if (enemyShips.every(s => s.hits === s.len)) { win(); return; }
+      }
+    }
+  } else {
+    enemy[r][c] = 'miss';
+  }
+  render();
+  setTimeout(cpuTurn, 500);
+}
+function cpuTurn() {
+  let r, c;
+  // target a cell adjacent to any current hit if one is available
+  const hits = [];
+  for (let a = 0; a < N; a++) for (let b = 0; b < N; b++) if (own[a][b] === 'hit') hits.push([a, b]);
+  for (const [hr, hc] of hits) {
+    const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+    const adj = dirs.filter(([dr, dc]) => {
+      const nr = hr + dr, nc = hc + dc;
+      return nr >= 0 && nr < N && nc >= 0 && nc < N && (own[nr][nc] === null || own[nr][nc] === 'ship');
+    });
+    if (adj.length) {
+      const [dr, dc] = adj[Math.floor(Math.random() * adj.length)];
+      r = hr + dr; c = hc + dc; break;
+    }
+  }
+  if (r === undefined) {
+    do { r = Math.floor(Math.random() * N); c = Math.floor(Math.random() * N); }
+    while (own[r][c] !== null && own[r][c] !== 'ship');
+  }
+  if (own[r][c] === 'ship') {
+    own[r][c] = 'hit';
+    if (!own.flat().some(v => v === 'ship')) { lose(); return; }
+  } else own[r][c] = 'miss';
+  render();
+}
+function win() {
+  phase = 'done';
+  const record = Best.save('battleship', shots, true);
+  $('best').textContent = Best.get('battleship');
+  $('msg').textContent = `You sank the fleet in ${shots} shots!${record ? ' New best!' : ''}`;
+  render();
+}
+function lose() {
+  phase = 'done';
+  $('msg').textContent = 'Your fleet was sunk. The enemy wins.';
+  render();
+}
+function render() {
+  const cellClass = (v, hint) => {
+    const h = hint ? ' hint' : '';
+    if (v === 'ship') return 'ship' + h;
+    if (v === 'hit') return 'hit' + h;
+    if (v === 'miss') return 'miss' + h;
+    if (v === 'sunk') return 'sunk' + h;
+    return h;
+  };
+  $('own').innerHTML = own.flatMap((row, r) => row.map((v, c) =>
+    `<button class="cell ${cellClass(v, phase === 'place' && canPlace(r, c) && placed < SHIPS.length)}" data-r="${r}" data-c="${c}" aria-label="Your ${r + 1},${c + 1}"></button>`)).join('');
+  $('enemy').innerHTML = enemy.flatMap((row, r) => row.map((v, c) =>
+    `<button class="cell ${v === 'ship' ? '' : cellClass(v, false)}" data-r="${r}" data-c="${c}" aria-label="Enemy ${r + 1},${c + 1}"></button>`)).join('');
+  document.querySelectorAll('#own .cell').forEach(b => b.onclick = () => tryPlace(+b.dataset.r, +b.dataset.c));
+  document.querySelectorAll('#enemy .cell').forEach(b => b.onclick = () => fire(+b.dataset.r, +b.dataset.c));
+}
+$('rotate').onclick = () => { horiz = !horiz; render(); };
+$('random').onclick = randomPlace;
+$('best').textContent = Best.get('battleship') || '—';
+newGame();
+</script>
+</body>
+</html>

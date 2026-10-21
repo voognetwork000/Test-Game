@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mastermind</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+  .board { display: flex; flex-direction: column; gap: 6px; width: min(100%, 400px); }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .slots { display: flex; gap: 6px; }
+  .slot { width: 42px; height: 42px; border-radius: 50%; border: 3px solid var(--line); cursor: pointer; background: var(--panel); }
+  .slot.pick { border-color: var(--gold); }
+  .fav { display: flex; gap: 4px; width: 46px; flex-wrap: wrap; }
+  .fav i { width: 13px; height: 13px; border-radius: 50%; background: var(--line); }
+  .fav i.black { background: #eef3e6; } .fav i.white { background: #f2b544; }
+  .palette { display: flex; gap: 8px; }
+  .palette button { width: 40px; height: 40px; border-radius: 50%; padding: 0; border-width: 3px; }
+  .palette button.on { border-color: var(--fg); }
+  .secret { display: flex; gap: 6px; min-height: 42px; }
+  .secret .slot { cursor: default; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Mastermind</h1>
+  <div class="stats">
+    <div class="stat"><small>Tries</small><b id="tries">0</b></div>
+    <div class="stat"><small>Wins</small><b id="best">0</b></div>
+  </div>
+</header>
+<main class="stage">
+  <div class="secret" id="secret" aria-label="Secret code"></div>
+  <div class="board" id="board"></div>
+  <div class="row" id="current">
+    <div class="slots" id="cur"></div>
+    <div class="fav" id="curfav"></div>
+  </div>
+  <div class="palette" id="palette" aria-label="Color picker"></div>
+  <div class="row">
+    <button class="primary" id="check" disabled>Check</button>
+    <button id="new">New game</button>
+  </div>
+  <p class="hint">Click a slot to cycle a colour, then Check. Gold peg = right colour, right spot; pale peg = right colour, wrong spot. Crack the code in 10 tries.</p>
+</main>
+<script src="shared.js"></script>
+<script>
+const COLORS = ['#ef6f6c', '#f2b544', '#7cc46a', '#5aa9e6', '#b78bd6', '#eef3e6'];
+const $ = id => document.getElementById(id);
+let secret, guess, tries, pick;
+
+function newGame() {
+  secret = Array.from({ length: 4 }, () => Math.floor(Math.random() * COLORS.length));
+  guess = [null, null, null, null];
+  tries = 0; pick = 0;
+  $('tries').textContent = 0;
+  $('secret').innerHTML = secret.map(() => `<div class="slot"></div>`).join('');
+  $('board').innerHTML = '';
+  renderCurrent(); renderPalette();
+}
+function feedback(g) {
+  let black = 0, white = 0;
+  const used = Array(4).fill(false), gused = Array(4).fill(false);
+  for (let i = 0; i < 4; i++) if (g[i] === secret[i]) { black++; used[i] = true; gused[i] = true; }
+  for (let i = 0; i < 4; i++) {
+    if (gused[i]) continue;
+    for (let j = 0; j < 4; j++) {
+      if (!used[j] && secret[j] === g[i]) { white++; used[j] = true; break; }
+    }
+  }
+  return { black, white };
+}
+function check() {
+  if (guess.includes(null) || tries >= 10) return;
+  const f = feedback(guess);
+  const row = document.createElement('div'); row.className = 'row';
+  row.innerHTML = `<div class="slots">${guess.map(i => `<div class="slot" style="background:${COLORS[i]}"></div>`).join('')}</div>
+    <div class="fav">${Array.from({ length: f.black }, () => '<i class="black"></i>').join('')}${Array.from({ length: f.white }, () => '<i class="white"></i>').join('')}</div>`;
+  $('board').prepend(row);
+  tries++; $('tries').textContent = tries;
+  if (f.black === 4) {
+    $('secret').innerHTML = secret.map(i => `<div class="slot" style="background:${COLORS[i]}"></div>`).join('');
+    Best.save('mastermind', Best.get('mastermind') + 1);
+    $('best').textContent = Best.get('mastermind');
+    alert(`Code cracked in ${tries} ${tries === 1 ? 'try' : 'tries'}!`);
+    newGame(); return;
+  }
+  if (tries >= 10) {
+    $('secret').innerHTML = secret.map(i => `<div class="slot" style="background:${COLORS[i]}"></div>`).join('');
+    alert('Out of tries! The code was ' + secret.map(i => '●'.replace('●', '') + '').join('') + ' revealed above.');
+    newGame(); return;
+  }
+  guess = [null, null, null, null];
+  renderCurrent();
+}
+function renderCurrent() {
+  $('cur').innerHTML = guess.map((g, i) => `<div class="slot${i === pick ? ' pick' : ''}" data-i="${i}" style="background:${g === null ? '' : COLORS[g]}"></div>`).join('');
+  document.querySelectorAll('#cur .slot').forEach(s => s.onclick = () => { pick = +s.dataset.i; renderCurrent(); });
+  $('curfav').innerHTML = '';
+  $('check').disabled = guess.includes(null);
+}
+function renderPalette() {
+  $('palette').innerHTML = COLORS.map((c, i) => `<button data-c="${i}" style="background:${c}" aria-label="Colour ${i + 1}"></button>`).join('');
+  document.querySelectorAll('#palette button').forEach(b => b.onclick = () => {
+    guess[pick] = +b.dataset.c;
+    renderCurrent();
+  });
+}
+$('check').onclick = check;
+$('new').onclick = newGame;
+$('best').textContent = Best.get('mastermind');
+newGame();
+</script>
+</body>
+</html>

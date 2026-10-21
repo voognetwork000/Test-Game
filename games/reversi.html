@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reversi</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+  .board { width: min(100%, 400px); display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; background: var(--panel); border: 2px solid var(--line); border-radius: 10px; padding: 8px; }
+  .cell { aspect-ratio: 1; border-radius: 6px; background: #2f5d52; border: none; padding: 0; }
+  .cell .disc { display: block; width: 78%; height: 78%; margin: 11% auto; border-radius: 50%; }
+  .cell.B .disc { background: radial-gradient(circle at 35% 30%, #4a4a4a, #1d1d1d); }
+  .cell.W .disc { background: radial-gradient(circle at 35% 30%, #ffffff, #c9d4cd); }
+  .cell.hint { outline: 2px dashed var(--gold); outline-offset: -3px; }
+  .cell.hint .disc { background: rgba(242, 181, 68, .35); }
+  .msg { font-family: var(--display); font-size: 22px; min-height: 30px; margin: 0; text-align: center; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Reversi</h1>
+  <div class="stats">
+    <div class="stat"><small>You</small><b id="you">2</b></div>
+    <div class="stat"><small>Computer</small><b id="cpu">2</b></div>
+    <div class="stat"><small>Wins</small><b id="best">0</b></div>
+  </div>
+</header>
+<main class="stage">
+  <p class="msg" id="msg">You are black. Go first.</p>
+  <div class="board" id="board" aria-label="Reversi board"></div>
+  <div class="row">
+    <button class="primary" id="new">New game</button>
+  </div>
+  <p class="hint">Place a disc to sandwich the computer's discs between two of yours. They flip. The player with the most discs at the end wins.</p>
+</main>
+<script src="shared.js"></script>
+<script>
+const DIRS = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
+const $ = id => document.getElementById(id);
+let board, turn, over;
+
+function newGame() {
+  board = Array.from({ length: 8 }, () => Array(8).fill(null));
+  board[3][3] = 'W'; board[3][4] = 'B'; board[4][3] = 'B'; board[4][4] = 'W';
+  turn = 'B'; over = false;
+  $('msg').textContent = 'You are black. Go first.';
+  render();
+}
+function inb(r, c) { return r >= 0 && r < 8 && c >= 0 && c < 8; }
+function flips(r, c, color) {
+  if (board[r][c]) return [];
+  const out = [];
+  for (const [dr, dc] of DIRS) {
+    let rr = r + dr, cc = c + dc, line = [];
+    while (inb(rr, cc) && board[rr][cc] && board[rr][cc] !== color) { line.push([rr, cc]); rr += dr; cc += dc; }
+    if (line.length && inb(rr, cc) && board[rr][cc] === color) out.push(...line);
+  }
+  return out;
+}
+function legal(color) {
+  const out = [];
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) if (flips(r, c, color).length) out.push([r, c]);
+  return out;
+}
+function apply(r, c, color) {
+  for (const [rr, cc] of flips(r, c, color)) board[rr][cc] = color;
+  board[r][c] = color;
+}
+function counts() {
+  let b = 0, w = 0;
+  for (const row of board) for (const v of row) { if (v === 'B') b++; if (v === 'W') w++; }
+  return { b, w };
+}
+function endGame() {
+  over = true;
+  const { b, w } = counts();
+  const win = b > w;
+  if (win) Best.save('reversi', Best.get('reversi') + 1);
+  $('best').textContent = Best.get('reversi');
+  $('msg').textContent = b === w ? 'Tie game!' : win ? `You win ${b}–${w}!` : `Computer wins ${w}–${b}.`;
+  render();
+}
+function cpuMove() {
+  const moves = legal('W');
+  if (!moves.length) return null;
+  let best = null, bestScore = -Infinity;
+  for (const [r, c] of moves) {
+    const f = flips(r, c, 'W').length;
+    let score = f * 4 + Math.random() * 3;
+    if ((r === 0 || r === 7) && (c === 0 || c === 7)) score += 20;
+    else if (r === 0 || r === 7 || c === 0 || c === 7) score += 8;
+    else if ((r === 0 || r === 7) && (c === 1 || c === 6)) score -= 8;
+    else if ((r === 1 || r === 6) && (c === 0 || c === 7)) score -= 8;
+    if (score > bestScore) { bestScore = score; best = [r, c]; }
+  }
+  return best;
+}
+// If the current player has no legal move, pass to the opponent (or end the game).
+function maybeAutoplay() {
+  if (over) return;
+  if (legal(turn).length) return;
+  const opp = turn === 'B' ? 'W' : 'B';
+  if (!legal(opp).length) { endGame(); return; }
+  turn = opp;
+  $('msg').textContent = turn === 'B' ? 'Computer had no move. Your turn.' : 'You have no move. Computer goes again.';
+  if (turn === 'W') setTimeout(cpuTurn, 450);
+}
+function cpuTurn() {
+  if (over) return;
+  maybeAutoplay();
+  if (over || turn !== 'W') return;
+  const m = cpuMove();
+  if (m) {
+    apply(m[0], m[1], 'W');
+    turn = 'B';
+    $('msg').textContent = 'Your turn.';
+    render();
+  }
+  maybeAutoplay();
+}
+function play(r, c) {
+  if (over) return;
+  if (turn !== 'B') return;
+  if (!flips(r, c, 'B').length) { maybeAutoplay(); return; }
+  apply(r, c, 'B');
+  turn = 'W';
+  $('msg').textContent = 'Computer is thinking…';
+  render();
+  setTimeout(cpuTurn, 420);
+}
+function render() {
+  $('board').innerHTML = board.flatMap((row, r) => row.map((v, c) => {
+    const hint = !over && turn === 'B' && flips(r, c, 'B').length;
+    return `<button class="cell ${v || ''}${hint ? ' hint' : ''}" data-r="${r}" data-c="${c}" aria-label="Cell ${r + 1},${c + 1}"><span class="disc"></span></button>`;
+  })).join('');
+  document.querySelectorAll('#board .cell').forEach(b => b.onclick = () => play(+b.dataset.r, +b.dataset.c));
+  const { b, w } = counts();
+  $('you').textContent = b; $('cpu').textContent = w;
+}
+$('new').onclick = newGame;
+$('best').textContent = Best.get('reversi');
+newGame();
+</script>
+</body>
+</html>

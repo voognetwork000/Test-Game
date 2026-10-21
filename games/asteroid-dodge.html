@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Asteroid Dodge</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+  .board { max-width: 420px; }
+  #c { background: #0b1a17; }
+  .pad { display: grid; grid-template-columns: repeat(3, 56px); gap: 6px; }
+  .pad button { height: 48px; padding: 0; font-size: 20px; }
+  .pad .left { grid-column: 1; } .pad .right { grid-column: 3; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Asteroid Dodge</h1>
+  <div class="stats">
+    <div class="stat"><small>Time</small><b id="score">0s</b></div>
+    <div class="stat"><small>Best</small><b id="best">0s</b></div>
+  </div>
+</header>
+<main class="stage">
+  <div class="board">
+    <canvas id="c" width="420" height="300" aria-label="Asteroid Dodge game"></canvas>
+    <div class="overlay" id="overlay">
+      <h2 id="ov-title">Asteroid Dodge</h2>
+      <p id="ov-text">Steer your ship with ◀ ▶, A / D, or your finger. Dodge the rocks for as long as you can.</p>
+      <button class="primary" id="go">Play</button>
+    </div>
+  </div>
+  <div class="pad" aria-label="Steering buttons">
+    <button class="left" data-d="-1" aria-label="Left">◀</button>
+    <button class="right" data-d="1" aria-label="Right">▶</button>
+  </div>
+</main>
+<script src="shared.js"></script>
+<script>
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+const W = 420, H = 300;
+let playing, ship, rocks, time, spawn, last;
+
+function reset() {
+  ship = { x: W / 2, y: H - 36, r: 14 };
+  rocks = []; time = 0; spawn = 0.8;
+  playing = true;
+  $('overlay').hidden = true;
+}
+function steer(d) {
+  if (!playing) return;
+  ship.x = Math.max(20, Math.min(W - 20, ship.x + d * 6.5));
+}
+function frame(now) {
+  if (!last) last = now;
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (playing) {
+    time += dt; $('score').textContent = Math.floor(time) + 's';
+    spawn -= dt;
+    const rate = Math.max(0.25, 0.8 - time * 0.012);
+    if (spawn <= 0) {
+      const r = 8 + Math.random() * 14;
+      rocks.push({ x: 20 + Math.random() * (W - 40), y: -r, r, v: 70 + Math.random() * 90 + time * 1.6, spin: Math.random() * 6 });
+      spawn = rate * (0.6 + Math.random() * 0.8);
+    }
+    for (let i = rocks.length - 1; i >= 0; i--) {
+      const k = rocks[i];
+      k.y += k.v * dt; k.spin += dt * 2;
+      const dx = k.x - ship.x, dy = k.y - ship.y;
+      if (Math.hypot(dx, dy) < k.r + ship.r - 4) { end(); break; }
+      if (k.y - k.r > H) rocks.splice(i, 1);
+    }
+  }
+  draw();
+  requestAnimationFrame(frame);
+}
+function end() {
+  playing = false;
+  const t = Math.floor(time);
+  const record = Best.save('asteroid-dodge', t);
+  $('best').textContent = Best.get('asteroid-dodge') + 's';
+  $('ov-title').textContent = 'Game over';
+  $('ov-text').textContent = `You survived ${t}s.${record ? ' New best!' : ''}`;
+  $('go').textContent = 'Fly again';
+  $('overlay').hidden = false;
+}
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0b1a17'; ctx.fillRect(0, 0, W, H);
+  for (const k of rocks) {
+    ctx.save(); ctx.translate(k.x, k.y); ctx.rotate(k.spin);
+    ctx.fillStyle = '#6e5a4a'; ctx.beginPath();
+    for (let i = 0; i < 9; i++) {
+      const a = i / 9 * Math.PI * 2, rr = k.r * (0.7 + (i % 3) * 0.15);
+      const px = Math.cos(a) * rr, py = Math.sin(a) * rr;
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#4a3a2e'; ctx.beginPath(); ctx.arc(-k.r * 0.3, -k.r * 0.3, k.r * 0.35, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+  // ship
+  ctx.save(); ctx.translate(ship.x, ship.y); ctx.rotate(0);
+  ctx.fillStyle = '#eef3e6';
+  ctx.beginPath(); ctx.moveTo(0, -18); ctx.lineTo(12, 10); ctx.lineTo(0, 5); ctx.lineTo(-12, 10); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#f2b544';
+  ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(5, 8); ctx.lineTo(0, 4); ctx.lineTo(-5, 8); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+onDirection(cv, d => steer(d === 'left' ? -1 : 1));
+addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a') steer(-1);
+  if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd') steer(1);
+});
+document.querySelectorAll('.pad button').forEach(b => b.onclick = () => steer(+b.dataset.d));
+$('go').onclick = reset;
+$('best').textContent = Best.get('asteroid-dodge') + 's';
+reset(); requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dino Dash</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+  .board { max-width: 480px; }
+  #c { background: #1d4a3a; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../index.html">← Library</a>
+  <h1>Dino Dash</h1>
+  <div class="stats">
+    <div class="stat"><small>Distance</small><b id="score">0</b></div>
+    <div class="stat"><small>Best</small><b id="best">0</b></div>
+  </div>
+</header>
+<main class="stage">
+  <div class="board">
+    <canvas id="c" width="480" height="220" aria-label="Dino Dash game"></canvas>
+    <div class="overlay" id="overlay">
+      <h2 id="ov-title">Dino Dash</h2>
+      <p id="ov-text">Run as far as you can. Tap, click, or press Space / ↑ to jump over the cacti.</p>
+      <button class="primary" id="go">Play</button>
+    </div>
+  </div>
+  <p class="hint">Jump with Space, ↑, W, click, or tap. Jump again in mid-air for a double jump.</p>
+</main>
+<script src="shared.js"></script>
+<script>
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+const GROUND = 190, G = 0.6;
+let playing, dino, obstacles, score, spawn, speed, last;
+
+function reset() {
+  dino = { x: 60, y: GROUND - 46, w: 34, h: 46, vy: 0, jumps: 0 };
+  obstacles = []; score = 0; speed = 6; spawn = 0;
+  playing = true;
+  $('overlay').hidden = true; $('score').textContent = 0;
+}
+function jump() {
+  if (!playing) return;
+  if (dino.jumps < 2) { dino.vy = dino.jumps === 0 ? -12 : -10.5; dino.jumps++; }
+}
+function frame(now) {
+  if (!last) last = now;
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (playing) {
+    // physics
+    dino.vy += G * 60 * dt;
+    dino.y += dino.vy * 60 * dt;
+    if (dino.y >= GROUND - dino.h) { dino.y = GROUND - dino.h; dino.vy = 0; dino.jumps = 0; }
+    // scoring
+    score += speed * dt; $('score').textContent = Math.floor(score);
+    // spawn
+    spawn -= dt; speed = 6 + Math.min(8, score / 400);
+    if (spawn <= 0) {
+      const w = 14 + Math.random() * 22, h = 22 + Math.random() * 26;
+      obstacles.push({ x: 480, y: GROUND - h, w, h, sc: 0.8 + Math.random() * 0.7 });
+      spawn = 1.1 + Math.random() * 1.4 - score / 3000;
+    }
+    // move + collide
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+      const o = obstacles[i];
+      o.x -= speed * 60 * dt * o.sc;
+      const hit = dino.x + 4 < o.x + o.w && dino.x + dino.w - 4 > o.x && dino.y + dino.h - 2 > o.y;
+      if (hit) { end(); break; }
+      if (o.x + o.w < 0) obstacles.splice(i, 1);
+    }
+  }
+  draw();
+  requestAnimationFrame(frame);
+}
+function end() {
+  playing = false;
+  const best = Math.floor(score);
+  const record = Best.save('dino-dash', best);
+  $('best').textContent = Best.get('dino-dash');
+  $('ov-title').textContent = 'Game over';
+  $('ov-text').textContent = `You ran ${best} m.${record ? ' New best!' : ''}`;
+  $('go').textContent = 'Run again';
+  $('overlay').hidden = false;
+}
+function draw() {
+  ctx.clearRect(0, 0, 480, 220);
+  ctx.fillStyle = '#1d4a3a'; ctx.fillRect(0, 0, 480, GROUND + 2);
+  ctx.fillStyle = '#4a7a3a'; ctx.fillRect(0, GROUND, 480, 30);
+  // obstacles
+  for (const o of obstacles) {
+    ctx.fillStyle = '#3f8f4a'; ctx.beginPath(); ctx.roundRect(o.x, o.y, o.w, o.h, 6); ctx.fill();
+    ctx.fillStyle = '#2f6f3a'; ctx.beginPath(); ctx.roundRect(o.x + 3, o.y + 4, 4, o.h - 8, 2); ctx.fill();
+  }
+  // dino
+  const d = dino;
+  ctx.fillStyle = '#f2b544'; ctx.beginPath(); ctx.roundRect(d.x, d.y, d.w, d.h, 8); ctx.fill();
+  ctx.fillStyle = '#1d1d1d';
+  ctx.beginPath(); ctx.arc(d.x + 24, d.y + 12, 2.6, 0, 7); ctx.arc(d.x + 31, d.y + 12, 2.6, 0, 7); ctx.fill();
+  ctx.fillStyle = '#d9a34a'; ctx.beginPath(); ctx.roundRect(d.x + d.w, d.y + 6, 5, 12, 3); ctx.fill();
+  ctx.fillStyle = '#ef6f6c'; ctx.beginPath(); ctx.moveTo(d.x + 2, d.y + 34); ctx.lineTo(d.x - 8, d.y + 44); ctx.lineTo(d.x + 4, d.y + 44); ctx.closePath(); ctx.fill();
+}
+$('go').onclick = reset;
+addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.key.toLowerCase() === 'w') { e.preventDefault(); jump(); }
+});
+cv.addEventListener('pointerdown', jump);
+$('best').textContent = Best.get('dino-dash');
+reset(); requestAnimationFrame(frame);
+</script>
+</body>
+</html>
