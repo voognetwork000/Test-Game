@@ -56,7 +56,7 @@
       <h1>Meadow Arcade</h1>
       <p>Pick a game and play right in your browser. Your best scores are saved on this device.</p>
     </div>
-    <div class="count"><b id="count">21</b> games</div>
+    <div class="count"><b id="count">32</b> games</div>
   </section>
 
   <div class="filters" id="filters">
@@ -140,6 +140,8 @@ const GAMES = [
     art: `<rect width="160" height="100" fill="#0b1a17"/><g>${[0, 1, 2, 3, 4].map(i => { const x = 18 + i * 31, y = 14 + (i % 3) * 22, r = 7 + (i % 2) * 4; return `<polygon points="${x},${y - r} ${x + r * .9},${y - r * .3} ${x + r * .5},${y + r * .8} ${x - r * .6},${y + r * .7} ${x - r * .9},${y - r * .2}" fill="#6e5a4a"/>`; }).join('')}</g><path d="M80 92l10 10 -10 4 -10 -4z" fill="#eef3e6"/><path d="M80 86l6 8 -6 3 -6 -3z" fill="#f2b544"/>` },
   { id: 'type-storm', name: 'Type Storm', tag: 'Word', desc: 'Type falling words to zap them before three reach the ground.', best: ['type-storm', 'Best: '],
     art: `<rect width="160" height="100" fill="#1d4a3a"/><rect x="10" y="66" width="140" height="22" rx="11" fill="#20503f"/><g font-family="Lilita One, sans-serif" font-size="16"><text x="24" y="82" fill="#f2b544">SUN</text></g><rect x="16" y="22" width="110" height="20" rx="10" fill="#20503f"/><g font-family="Lilita One, sans-serif" font-size="14"><text x="30" y="37" fill="#f2b544">CLOUD</text></g><rect x="60" y="42" width="84" height="20" rx="10" fill="#20503f"/><g font-family="Lilita One, sans-serif" font-size="14"><text x="74" y="57" fill="#f2b544">STAR</text></g>` },
+  { id: 'neon-drift', name: 'Neon Drift', tag: 'Action', desc: 'Race a synthwave highway at 240 km/h. Dodge traffic, collect light orbs, chase the sun.', best: ['neon-drift', 'Best: '],
+    art: `<defs><linearGradient id="ndSun" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff4b8"/><stop offset=".34" stop-color="#ffd23f"/><stop offset=".62" stop-color="#ff9a38"/><stop offset="1" stop-color="#ff2d95"/></linearGradient><linearGradient id="ndSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0c0420"/><stop offset="1" stop-color="#3a1150"/></linearGradient></defs><rect width="160" height="100" fill="url(#ndSky)"/><g fill="#fff" opacity=".8"><circle cx="22" cy="12" r=".9"/><circle cx="48" cy="7" r=".7"/><circle cx="120" cy="14" r=".8"/><circle cx="140" cy="6" r=".6"/><circle cx="96" cy="9" r=".7"/></g><circle cx="80" cy="38" r="21" fill="url(#ndSun)"/><g fill="#3a1150"><rect x="59" y="44" width="42" height="1.4"/><rect x="59" y="49" width="42" height="1.9"/><rect x="59" y="54" width="42" height="2.4"/></g><path d="M0 62h160" stroke="#ff6fc0" stroke-width="1.2" opacity=".75"/><path d="M52 100 L72 62 L88 62 L108 100 Z" fill="#150e35"/><path d="M52 100 L72 62" stroke="#ff2d95" stroke-width="2.2"/><path d="M108 100 L88 62" stroke="#00e5ff" stroke-width="2.2"/><g stroke="#8ea4d8" stroke-width="1" opacity=".55"><path d="M72 84h16"/><path d="M69 72h22"/><path d="M66 66h28"/></g><g transform="translate(80 93)"><rect x="-11" y="-9" width="22" height="10" rx="2.5" fill="#3d2985"/><rect x="-13" y="-13" width="26" height="2.4" rx="1" fill="#2b2058"/><rect x="-8" y="-8" width="16" height="2" rx="1" fill="#ff8ad0"/></g>` },
 ];
 
 function readBest(key) { try { return Number(localStorage.getItem('best:' + key)) || 0; } catch { return 0; } }
