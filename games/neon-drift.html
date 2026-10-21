@@ -465,7 +465,7 @@ function update(dt) {
       const rel = o.z - travel;
       if (rel < -900) { o.active = false; continue; }
       if (o.prevRel !== null && o.prevRel > PZ && rel <= PZ) {
-        const close = Math.abs(playerX - o.offset) < 0.34;
+        const close = Math.abs(playerX - o.offset) < 0.5;
         if (o.kind === 'car') { if (close) hitCar(); }
         else if (close) collectOrb(o);
       }
